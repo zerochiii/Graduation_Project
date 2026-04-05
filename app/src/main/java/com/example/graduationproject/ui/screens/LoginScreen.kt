@@ -30,7 +30,7 @@ private val ErrorRed = Color(0xFFB00020)
 @Composable
 fun LoginScreen(
     onNavigateToRegister: () -> Unit = {},
-    onLoginSuccess: (role: String, accountId: Int) -> Unit = { _, _ -> }
+    onLoginSuccess: () -> Unit = {}
 ) {
     var account by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }

@@ -1,6 +1,5 @@
 package com.example.graduationproject.ui.screens
 
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -19,9 +18,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -285,6 +284,7 @@ fun RewardHeader(currentPoints: Int) {
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // 巨大的金幣插畫
         Box(
             modifier = Modifier
                 .size(100.dp)
@@ -363,9 +363,11 @@ fun RewardCard(
             }
 
             Button(
-                onClick = onRedeemClick,
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                enabled = canAfford && !isLoading,
+                onClick = { /* 兌換邏輯 */ },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                enabled = canAfford,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = PrimaryPeach,
                     contentColor = Color.White,
@@ -373,7 +375,7 @@ fun RewardCard(
                     disabledContentColor = TextSub.copy(alpha = 0.5f)
                 ),
                 shape = RoundedCornerShape(14.dp),
-                elevation = if (canAfford && !isLoading) ButtonDefaults.buttonElevation(defaultElevation = 2.dp) else null
+                elevation = if (canAfford) ButtonDefaults.buttonElevation(defaultElevation = 2.dp) else null
             ) {
                 if (isLoading) {
                     CircularProgressIndicator(color = PrimaryPeach, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
