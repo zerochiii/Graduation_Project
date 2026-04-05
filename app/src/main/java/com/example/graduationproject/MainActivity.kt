@@ -39,10 +39,22 @@ fun AppNavigation() {
                 onNavigateToRegister = {
                     navController.navigate("register")
                 },
-                onLoginSuccess = {
-                    // 登入成功後跳轉到首頁，並清空返回棧，防止按返回鍵回到登入頁
-                    navController.navigate("home") {
-                        popUpTo("login") { inclusive = true }
+                onLoginSuccess = { role, accountId ->
+                    when (role) {
+                        "elder" -> {
+                            navController.navigate("home/$accountId") {
+                                popUpTo("login") { inclusive = true }
+                            }
+                        }
+                        "medical_stuff" -> {
+                        }
+                        "family" -> {
+                        }
+                        else -> {
+                            navController.navigate("home") {
+                                popUpTo("login") { inclusive = true }
+                            }
+                        }
                     }
                 }
             )
@@ -58,8 +70,10 @@ fun AppNavigation() {
         }
 
         // 首頁
-        composable("home") {
-            ElderlyDashboard()
+        composable("home/{accountId}") {backStackEntry ->
+            val accountIdString = backStackEntry.arguments?.getString("accountId")
+            val accountId = accountIdString?.toIntOrNull() ?: -1
+            ElderlyDashboard(accountId = accountId)
         }
     }
 }

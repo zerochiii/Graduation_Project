@@ -42,7 +42,7 @@ private val TextSub = Color(0xFF5D5D5D)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ElderlyDashboard() {
+fun ElderlyDashboard(accountId: Int) {
     var selectedItem by remember { mutableIntStateOf(0) }
     val items = listOf("首頁", "任務集", "社群", "獎勵")
     val icons = listOf(
@@ -51,6 +51,7 @@ fun ElderlyDashboard() {
         Icons.Default.Groups,
         Icons.Default.EmojiEvents
     )
+    RewardScreen(accountId = accountId)
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -109,7 +110,7 @@ fun ElderlyDashboard() {
                 0 -> DashboardContent()
                 1 -> AssignmentScreen()
                 2 -> CommunityScreen()
-                3 -> RewardScreen()
+                3 -> RewardScreen(accountId = accountId)
             }
         }
     }
@@ -487,6 +488,6 @@ fun ElderlyNavigationBar(
 @Composable
 fun DashboardPreview() {
     GraduationProjectTheme {
-        ElderlyDashboard()
+        ElderlyDashboard(accountId = 1)
     }
 }
