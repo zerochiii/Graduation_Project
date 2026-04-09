@@ -1,4 +1,5 @@
 package com.example.graduationproject.DataClass
+import com.example.graduationproject.ui.screens.PointRecord
 import com.google.gson.annotations.SerializedName
 
 data class LoginRequest(
@@ -39,4 +40,12 @@ data class GetPointsResponse(
     val success: Boolean,
     val message: String?,
     val points: Int
+)
+
+data class GetPointHistoryRequest(val account_id: Int)
+
+data class GetPointHistoryResponse(
+    val success: Boolean,
+    val message: String?,
+    val records: List<PointRecord>?
 )

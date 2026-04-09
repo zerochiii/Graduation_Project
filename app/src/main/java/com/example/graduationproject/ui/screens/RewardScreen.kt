@@ -159,7 +159,7 @@ fun RewardScreen(accountId: Int, currentPoints: Int, onPointsUpdated: (Int) -> U
                 shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
                 dragHandle = { BottomSheetDefaults.DragHandle(color = TextSub.copy(alpha = 0.3f)) }
             ) {
-                PointsDetailContent()
+                PointsDetailContent(accountId = accountId)
             }
         }
     }
@@ -167,21 +167,33 @@ fun RewardScreen(accountId: Int, currentPoints: Int, onPointsUpdated: (Int) -> U
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PointsDetailContent() {
+fun PointsDetailContent(accountId: Int) {
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     val tabs = listOf("獲得紀錄", "兌換紀錄")
 
-    val earningRecords = listOf(
-        PointRecord("完成每日訓練", 50, "2023.10.27", true),
-        PointRecord("每日簽到", 10, "2023.10.27", true),
-        PointRecord("上週排名獎勵", 100, "2023.10.26", true),
-        PointRecord("邀請好友", 200, "2023.10.25", true)
-    )
+    var earningRecords by remember { mutableStateOf<List<PointRecord>>(emptyList()) }
+    var redemptionRecords by remember { mutableStateOf<List<PointRecord>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
 
-    val redemptionRecords = listOf(
-        PointRecord("兌換運動排汗衫", 500, "2023.10.24", false)
-    )
 
+    LaunchedEffect(accountId) {
+        if (accountId <= 0) return@LaunchedEffect
+        isLoading = true
+        try {
+            val request = com.example.graduationproject.DataClass.GetPointHistoryRequest(account_id = accountId)
+            val response = com.example.graduationproject.api.ApiClient.apiService.getPointHistory(request)
+
+            if (response.isSuccessful && response.body()?.success == true) {
+                val allRecords = response.body()?.records ?: emptyList()
+                earningRecords = allRecords.filter { it.isEarning }
+                redemptionRecords = allRecords.filter { !it.isEarning }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        } finally {
+            isLoading = false
+        }
+    }
     Column(
         modifier = Modifier
             .fillMaxHeight(0.8f)
@@ -221,22 +233,46 @@ fun PointsDetailContent() {
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(bottom = 32.dp)
-        ) {
-            val currentRecords = if (selectedTabIndex == 0) earningRecords else redemptionRecords
-            if (currentRecords.isEmpty()) {
-                item {
-                    Box(modifier = Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("暫無紀錄", fontSize = 18.sp, color = TextSub)
-                    }
-                }
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (isLoading) {
+                CircularProgressIndicator(
+                    color = PrimaryPeach,
+                    modifier = Modifier.align(Alignment.Center)
+                )
             } else {
-                items(currentRecords) { record ->
-                    RecordItem(record)
+                val currentRecords =
+                    if (selectedTabIndex == 0) earningRecords else redemptionRecords
+
+                if (currentRecords.isEmpty()) {
+                    Text(
+                        text = "暫無紀錄",
+                        fontSize = 18.sp,
+                        color = TextSub,
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(bottom = 32.dp)
+                    ) {
+                        val currentRecords =
+                            if (selectedTabIndex == 0) earningRecords else redemptionRecords
+                        if (currentRecords.isEmpty()) {
+                            item {
+                                Box(
+                                    modifier = Modifier.fillParentMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("暫無紀錄", fontSize = 18.sp, color = TextSub)
+                                }
+                            }
+                        } else {
+                            items(currentRecords) { record ->
+                                RecordItem(record)
+                            }
+                        }
+                    }
                 }
             }
         }

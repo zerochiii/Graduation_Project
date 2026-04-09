@@ -1,5 +1,7 @@
 package com.example.graduationproject.api
 
+import com.example.graduationproject.DataClass.GetPointHistoryRequest
+import com.example.graduationproject.DataClass.GetPointHistoryResponse
 import com.example.graduationproject.DataClass.GetPointsRequest
 import com.example.graduationproject.DataClass.GetPointsResponse
 import com.example.graduationproject.DataClass.LoginRequest
@@ -23,4 +25,7 @@ interface ApiService {
 
     @POST("api/get_points.php")
     suspend fun getPoints(@Body request: GetPointsRequest): Response<GetPointsResponse>
+
+    @POST("api/get_point_history.php")
+    suspend fun getPointHistory(@Body request: GetPointHistoryRequest): Response<GetPointHistoryResponse>
 }
