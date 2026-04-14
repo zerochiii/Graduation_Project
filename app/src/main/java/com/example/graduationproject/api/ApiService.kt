@@ -9,6 +9,8 @@ import com.example.graduationproject.DataClass.LoginResponse
 import com.example.graduationproject.DataClass.RedeemRequest
 import com.example.graduationproject.DataClass.RedeemResponse
 import com.example.graduationproject.DataClass.RegisterElderRequest
+import com.example.graduationproject.DataClass.SendOtpRequest
+import com.example.graduationproject.DataClass.SendOtpResponse
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.POST
@@ -28,4 +30,10 @@ interface ApiService {
 
     @POST("api/get_point_history.php")
     suspend fun getPointHistory(@Body request: GetPointHistoryRequest): Response<GetPointHistoryResponse>
+
+    @POST("api/send_email_otp.php")
+    suspend fun sendEmailOtp(
+        @Body request: SendOtpRequest
+    ): Response<SendOtpResponse>
+
 }
