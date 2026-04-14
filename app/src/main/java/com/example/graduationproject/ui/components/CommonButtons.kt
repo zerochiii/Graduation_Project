@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
  * 2. 強制加入觸覺回饋：確保點擊時有明顯震動
  * 3. 視覺強化：按下的陰影明顯減少 (8.dp -> 2.dp)
  * 4. 針對長輩優化：高度預設至少 64.dp，字體預設 22.sp 以上
+ * 5. 狀態優化：禁用狀態也維持品牌色 (橘色)，僅透過透明度區分
  */
 @Composable
 fun ScaleButton(
@@ -45,7 +46,7 @@ fun ScaleButton(
     fontSize: androidx.compose.ui.unit.TextUnit = 22.sp,
     icon: ImageVector? = null,
     shape: RoundedCornerShape = RoundedCornerShape(20.dp),
-    minHeight: Dp = 64.dp // 增加最小高度參數，以便在不同場景調整
+    minHeight: Dp = 64.dp 
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -85,8 +86,9 @@ fun ScaleButton(
             colors = ButtonDefaults.elevatedButtonColors(
                 containerColor = containerColor,
                 contentColor = contentColor,
-                disabledContainerColor = Color(0xFFEEEEEE),
-                disabledContentColor = Color.Gray.copy(alpha = 0.5f)
+                // 修改：禁用狀態也呈現橘色，但稍微變淡以示區別
+                disabledContainerColor = containerColor.copy(alpha = 0.5f),
+                disabledContentColor = contentColor.copy(alpha = 0.7f)
             ),
             elevation = ButtonDefaults.elevatedButtonElevation(
                 defaultElevation = 8.dp,
@@ -106,8 +108,9 @@ fun ScaleButton(
             colors = ButtonDefaults.buttonColors(
                 containerColor = containerColor,
                 contentColor = contentColor,
-                disabledContainerColor = Color(0xFFEEEEEE),
-                disabledContentColor = Color.Gray.copy(alpha = 0.5f)
+                // 修改：禁用狀態也呈現橘色，但稍微變淡以示區別
+                disabledContainerColor = containerColor.copy(alpha = 0.5f),
+                disabledContentColor = contentColor.copy(alpha = 0.7f)
             ),
             interactionSource = interactionSource
         ) {

@@ -153,7 +153,7 @@ fun LoginScreen(
                                     username = account,
                                     password = password
                                 )
-                                val response = com.example.graduationproject.api.ApiClient.apiService.login(loginRequest)
+                                /*val response = com.example.graduationproject.api.ApiClient.apiService.login(loginRequest)
 
                                 if (response.isSuccessful && response.body()?.success == true) {
                                     val body = response.body()!!
@@ -161,6 +161,11 @@ fun LoginScreen(
                                     onLoginSuccess(safeRole, body.account_id)
                                 } else {
                                     errorMessage = response.body()?.message ?: "帳號或密碼錯誤"
+                                }因要測試介面，故API呼叫先註解掉，若需要執行資料庫，則將註解取消*/
+                                if (account == "admin") { /*管理者直接登入，帳號、密碼皆為：admin*/
+                                    onLoginSuccess("elder", 1)
+                                } else {
+                                    errorMessage = "請輸入 admin 進行測試"
                                 }
 
                             } catch (e: Exception) {
@@ -191,49 +196,6 @@ fun LoginScreen(
             }
 
             Spacer(modifier = Modifier.height(32.dp))
-
-            // 第三方登入區
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                HorizontalDivider(modifier = Modifier.weight(1f), color = TextMain.copy(alpha = 0.1f))
-                Text(
-                    text = " 或使用以下方式登入 ",
-                    fontSize = 14.sp,
-                    color = TextMain.copy(alpha = 0.4f),
-                    modifier = Modifier.padding(horizontal = 8.dp)
-                )
-                HorizontalDivider(modifier = Modifier.weight(1f), color = TextMain.copy(alpha = 0.1f))
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                // LINE 登入
-                OutlinedButton(
-                    onClick = { /* LINE 登入 */ },
-                    modifier = Modifier.weight(1f).height(60.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    border = ButtonDefaults.outlinedButtonBorder.copy(width = 1.dp)
-                ) {
-                    Icon(Icons.Default.Chat, contentDescription = null, tint = Color(0xFF00B900))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("LINE", fontSize = 16.sp, color = TextMain)
-                }
-
-                // Google 登入
-                OutlinedButton(
-                    onClick = { /* Google 登入 */ },
-                    modifier = Modifier.weight(1f).height(60.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    border = ButtonDefaults.outlinedButtonBorder.copy(width = 1.dp)
-                ) {
-                    Icon(Icons.Default.AccountCircle, contentDescription = null, tint = Color(0xFFEA4335))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Google", fontSize = 16.sp, color = TextMain)
-                }
-            }
         }
     }
 }

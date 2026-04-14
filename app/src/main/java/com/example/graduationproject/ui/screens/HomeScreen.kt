@@ -140,7 +140,7 @@ fun ElderlyDashboard(
                         onClick = {
                             if (isSurveyComplete) onStartTraining() else onNavigateToSurvey()
                         },
-                        text = if (isSurveyComplete) "開始今日訓練" else "前往填寫體能量表問卷",
+                        text = if (isSurveyComplete) "🏃 開始今日訓練" else "前往填寫體能量表問卷",
                         modifier = Modifier.fillMaxWidth(0.9f).height(80.dp),
                         fontSize = if (isSurveyComplete) 24.sp else 22.sp,
                         shape = RoundedCornerShape(40.dp),
@@ -239,6 +239,7 @@ fun DashboardContent(currentPoints: Int,isSurveyComplete: Boolean, onNavigateToS
                 }
             }
         }
+        item { Spacer(modifier = Modifier.height(24.dp)) }
 
         item {
             StatsFilledCardsRow(currentPoints = currentPoints)

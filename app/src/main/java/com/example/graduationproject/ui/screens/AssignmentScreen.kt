@@ -151,7 +151,7 @@ fun AssignmentScreen(
                         )
                     ) {
                         Text(
-                            text = "前往填寫量表",
+                            text = "前往填寫簡易體能量表",
                             fontSize = 20.scaledSp(),
                             fontWeight = FontWeight.Bold
                         )
