@@ -17,8 +17,8 @@ data class LoginResponse(
 data class RegisterElderRequest(
     val name: String,
     val username: String,
-    val password: String,
-    val phone: String
+    val email: String,
+    val password: String
 )
 
 data class RedeemRequest(
@@ -48,4 +48,25 @@ data class GetPointHistoryResponse(
     val success: Boolean,
     val message: String?,
     val records: List<PointRecord>?
+)
+
+data class SendOtpRequest(
+    val email: String
+)
+
+data class SendOtpResponse(
+    val success: Boolean,
+    val message: String
+)
+
+data class SaveAssessmentRequest(
+    val account_id: Int,
+    val sppb_score: Int,
+    val grade: String,
+    val has_fall_risk: Boolean
+)
+
+data class SaveAssessmentResponse(
+    val success: Boolean,
+    val message: String
 )

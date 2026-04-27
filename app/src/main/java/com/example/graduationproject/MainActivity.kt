@@ -17,6 +17,8 @@ import com.example.graduationproject.ui.screens.SettingsScreen
 import com.example.graduationproject.ui.screens.SurveyScreen
 import com.example.graduationproject.ui.theme.GraduationProjectTheme
 import com.example.graduationproject.ui.theme.LocalFontScale
+import kotlinx.coroutines.launch
+
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -75,10 +77,36 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
         }
 
         composable("survey") {
+            val coroutineScope = rememberCoroutineScope()
+            val context = androidx.compose.ui.platform.LocalContext.current
+
             SurveyScreen(
-                onComplete = { grade, score ->
-                    userViewModel.completeSurvey()
-                    navController.popBackStack()
+                onComplete = { grade, score, hasFallRisk ->
+
+                    coroutineScope.launch {
+                        try {
+                            val request = com.example.graduationproject.DataClass.SaveAssessmentRequest(
+                                account_id = globalAccountId,
+                                sppb_score = score,
+                                grade = grade,
+                                has_fall_risk = hasFallRisk
+                            )
+
+                            val response = com.example.graduationproject.api.ApiClient.apiService.saveAssessment(request)
+
+                            if (response.isSuccessful && response.body()?.success == true) {
+                                android.widget.Toast.makeText(context, "評估結果已成功紀錄", android.widget.Toast.LENGTH_SHORT).show()
+                                userViewModel.completeSurvey()
+                                navController.popBackStack()
+                            }
+                            else {
+                                android.widget.Toast.makeText(context, "儲存失敗：${response.body()?.message}", android.widget.Toast.LENGTH_LONG).show()
+                            }
+                        }
+                        catch (e: Exception) {
+                            android.widget.Toast.makeText(context, "網路連線異常：${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
                 },
                 onNavigateBack = {
                     navController.popBackStack()

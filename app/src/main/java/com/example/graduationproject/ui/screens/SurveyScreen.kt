@@ -28,7 +28,7 @@ private val TextMain = Color(0xFF201A18)
 @Composable
 fun SurveyScreen(
     onNavigateBack: () -> Unit,
-    onComplete: (grade: String, score: Int) -> Unit,
+    onComplete: (grade: String, score: Int, hasFallRisk: Boolean) -> Unit,
     viewModel: SurveyViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -41,7 +41,7 @@ fun SurveyScreen(
             ResultContent(
                 uiState = uiState,
                 onComplete = {
-                    onComplete(uiState.finalGrade, uiState.finalScore)
+                    onComplete(uiState.finalGrade, uiState.finalScore, uiState.hasFallRisk)
                 }
             )
         } else {
@@ -333,6 +333,6 @@ fun ResultContent(
 @Composable
 fun SurveyScreenPreview() {
     GraduationProjectTheme {
-        SurveyScreen(onNavigateBack = {}, onComplete = { _, _ -> })
+        //SurveyScreen(onNavigateBack = {}, onComplete = { _, _ -> })
     }
 }
