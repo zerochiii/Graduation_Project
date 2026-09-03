@@ -4,7 +4,9 @@ import com.example.graduationproject.DataClass.BindFamilyRequest
 import com.example.graduationproject.DataClass.CommonResponse
 import com.example.graduationproject.DataClass.CommunityDataResponse
 import com.example.graduationproject.DataClass.ElderDashboardResponse
+import com.example.graduationproject.DataClass.FitnessRadarResponse
 import com.example.graduationproject.DataClass.FriendActionRequest
+import com.example.graduationproject.DataClass.GetFitnessRadarRequest
 import com.example.graduationproject.DataClass.GetPointHistoryRequest
 import com.example.graduationproject.DataClass.GetPointHistoryResponse
 import com.example.graduationproject.DataClass.GetPointsRequest
@@ -17,6 +19,7 @@ import com.example.graduationproject.DataClass.RegisterElderRequest
 import com.example.graduationproject.DataClass.ResetPasswordRequest
 import com.example.graduationproject.DataClass.SaveAssessmentRequest
 import com.example.graduationproject.DataClass.SaveAssessmentResponse
+import com.example.graduationproject.DataClass.SaveExerciseRecordRequest
 import com.example.graduationproject.DataClass.SendOtpRequest
 import com.example.graduationproject.DataClass.SendOtpResponse
 import com.example.graduationproject.DataClass.VerifyOtpRequest
@@ -75,4 +78,10 @@ interface ApiService {
 
     @POST("api/reset_password.php")
     suspend fun resetPassword(@Body request: ResetPasswordRequest): Response<CommonResponse>
+
+    @POST("api/get_fitness_radar.php")
+    suspend fun getFitnessRadar(@Body request: GetFitnessRadarRequest): Response<FitnessRadarResponse>
+
+    @POST("api/save_exercise_record.php")
+    suspend fun saveExerciseRecord(@Body request: SaveExerciseRecordRequest): Response<CommonResponse>
 }
