@@ -44,12 +44,32 @@ private val StatsPastelOrange = Color(0xFFFFF3E0)
 private val TextMain = Color(0xFF201A18)
 private val TextSub = Color(0xFF5D5D5D)
 
+/**
+ * 依據當前小時回傳對應的問候語：
+ * 05:00 ~ 10:59: 早安
+ * 11:00 ~ 16:59: 午安
+ * 其他 (17:00 ~ 04:59): 晚安
+ */
 private fun getGreetingText(): String {
     val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
     return when (hour) {
         in 5..10 -> "早安"
         in 11..16 -> "午安"
         else -> "晚安"
+    }
+}
+
+/**
+ * 修改處：新增體能狀態判斷邏輯
+ */
+private fun getFitnessStatusText(sppbScore: Int?): String {
+    return when (sppbScore) {
+        null -> "尚未評估"
+        in 0..3 -> "照護輔助"
+        in 4..6 -> "循序恢復"
+        in 7..9 -> "穩定提升"
+        in 10..12 -> "良好維持"
+        else -> "尚未評估"
     }
 }
 
@@ -69,6 +89,7 @@ fun ElderlyDashboard(
     var currentPoints by remember { mutableIntStateOf(0) }
     var streakDays by remember { mutableIntStateOf(0) }
     var currentWeek by remember { mutableIntStateOf(1) }
+    var sppbScore by remember { mutableStateOf<Int?>(null) } // 修改處：新增 sppbScore 狀態
     var selectedItem by remember { mutableIntStateOf(0) }
     var localIsSurveyComplete by remember(isSurveyComplete) { mutableStateOf(isSurveyComplete) }
 
@@ -87,6 +108,7 @@ fun ElderlyDashboard(
                 currentPoints = data.points
                 streakDays = data.streakDays
                 currentWeek = data.currentWeek
+                sppbScore = data.sppbScore // 修改處：從 API 取得 sppbScore
                 localIsSurveyComplete = data.grade.isNotEmpty()
             }
         } catch (e: Exception) {
@@ -170,6 +192,7 @@ fun ElderlyDashboard(
                     streakDays = streakDays,
                     currentWeek = currentWeek,
                     isSurveyComplete = localIsSurveyComplete,
+                    sppbScore = sppbScore, // 修改處：傳遞 sppbScore
                     onNavigateToSurvey = onNavigateToSurvey
                 )
                 1 -> AssignmentScreen(
@@ -193,6 +216,7 @@ fun DashboardContent(
     streakDays: Int,
     currentWeek: Int,
     isSurveyComplete: Boolean,
+    sppbScore: Int?, // 修改處：新增 sppbScore 參數
     onNavigateToSurvey: () -> Unit
 ) {
     // 修改處：新增問候語狀態，並使用 LaunchedEffect 搭配 delay 定期更新
@@ -251,8 +275,9 @@ fun DashboardContent(
                         color = Color(0xFFE8F5E9),
                         shape = RoundedCornerShape(12.dp)
                     ) {
+                        // 修改處：將原本寫死的「健康狀態：優良」改為依據 sppbScore 顯示的「體能狀態」
                         Text(
-                            text = "健康狀態：優良",
+                            text = "體能狀態：${getFitnessStatusText(sppbScore)}",
                             fontSize = 18.scaledSp(), fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32), modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                         )
                     }
