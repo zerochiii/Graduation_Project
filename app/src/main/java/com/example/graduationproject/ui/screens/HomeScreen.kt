@@ -1,10 +1,15 @@
 package com.example.graduationproject.ui.screens
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -21,6 +26,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,10 +51,46 @@ private val TextMain = Color(0xFF201A18)
 private val TextSub = Color(0xFF5D5D5D)
 
 /**
- * 依據當前小時回傳對應的問候語：
- * 05:00 ~ 10:59: 早安
- * 11:00 ~ 16:59: 午安
- * 其他 (17:00 ~ 04:59): 晚安
+ * 修改處：新增通知類型與資料類別，timeText 改為 createdAtMillis
+ */
+enum class NotificationType {
+    SURVEY,
+    TRAINING,
+    POINTS,
+    SOCIAL,
+    SYSTEM
+}
+
+data class HomeNotification(
+    val id: Int,
+    val title: String,
+    val message: String,
+    val createdAtMillis: Long,
+    val type: NotificationType,
+    val isRead: Boolean = false
+)
+
+/**
+ * 依據時間戳記回傳相對時間文字
+ */
+private fun getRelativeTimeText(createdAtMillis: Long): String {
+    val now = System.currentTimeMillis()
+    val diffMillis = now - createdAtMillis
+    val diffMinutes = diffMillis / (60 * 1000)
+    val diffHours = diffMinutes / 60
+    val diffDays = diffHours / 24
+
+    return when {
+        diffMinutes < 1 -> "剛剛"
+        diffMinutes < 60 -> "${diffMinutes} 分鐘前"
+        diffHours < 24 -> "${diffHours} 小時前"
+        diffDays < 7 -> "${diffDays} 天前"
+        else -> "較早之前"
+    }
+}
+
+/**
+ * 依據當前小時回傳對應的問候語
  */
 private fun getGreetingText(): String {
     val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
@@ -60,7 +102,7 @@ private fun getGreetingText(): String {
 }
 
 /**
- * 修改處：新增體能狀態判斷邏輯
+ * 依據 SPPB 分數判斷體能狀態文字
  */
 private fun getFitnessStatusText(sppbScore: Int?): String {
     return when (sppbScore) {
@@ -89,9 +131,55 @@ fun ElderlyDashboard(
     var currentPoints by remember { mutableIntStateOf(0) }
     var streakDays by remember { mutableIntStateOf(0) }
     var currentWeek by remember { mutableIntStateOf(1) }
-    var sppbScore by remember { mutableStateOf<Int?>(null) } // 修改處：新增 sppbScore 狀態
+    var sppbScore by remember { mutableStateOf<Int?>(null) } 
     var selectedItem by remember { mutableIntStateOf(0) }
     var localIsSurveyComplete by remember(isSurveyComplete) { mutableStateOf(isSurveyComplete) }
+
+    // 通知狀態管理與標記已讀邏輯
+    var showNotificationScreen by remember { mutableStateOf(false) }
+    var notifications by remember { mutableStateOf<List<HomeNotification>>(emptyList()) }
+
+    fun markNotificationAsRead(id: Int) {
+        notifications = notifications.map {
+            if (it.id == id) it.copy(isRead = true) else it
+        }
+    }
+
+    // 依據評估狀態初始化通知內容
+    LaunchedEffect(localIsSurveyComplete) {
+        val now = System.currentTimeMillis()
+        notifications = if (!localIsSurveyComplete) {
+            listOf(
+                HomeNotification(
+                    id = 1,
+                    title = "體能評估提醒",
+                    message = "請先完成體能評估，以便為您安排專屬任務。",
+                    createdAtMillis = now,
+                    type = NotificationType.SURVEY,
+                    isRead = false
+                )
+            )
+        } else {
+            listOf(
+                HomeNotification(
+                    id = 1,
+                    title = "今日訓練提醒",
+                    message = "今天還有訓練任務尚未完成，記得開始今日訓練。",
+                    createdAtMillis = now,
+                    type = NotificationType.TRAINING,
+                    isRead = false
+                ),
+                HomeNotification(
+                    id = 2,
+                    title = "點數獎勵提醒",
+                    message = "完成訓練可獲得點數，累積後可兌換獎勵。",
+                    createdAtMillis = now - (60 * 60 * 1000), 
+                    type = NotificationType.POINTS,
+                    isRead = false
+                )
+            )
+        }
+    }
 
     LaunchedEffect(accountId, selectedItem, isSurveyComplete) {
         if (accountId <= 0 || selectedItem != 0) return@LaunchedEffect
@@ -108,7 +196,7 @@ fun ElderlyDashboard(
                 currentPoints = data.points
                 streakDays = data.streakDays
                 currentWeek = data.currentWeek
-                sppbScore = data.sppbScore // 修改處：從 API 取得 sppbScore
+                sppbScore = data.sppbScore
                 localIsSurveyComplete = data.grade.isNotEmpty()
             }
         } catch (e: Exception) {
@@ -124,85 +212,332 @@ fun ElderlyDashboard(
         Icons.Default.EmojiEvents
     )
 
+    if (showNotificationScreen) {
+        NotificationScreen(
+            notifications = notifications,
+            onBack = { showNotificationScreen = false },
+            onAction = { notification ->
+                markNotificationAsRead(notification.id)
+                showNotificationScreen = false
+                when (notification.type) {
+                    NotificationType.SURVEY -> onNavigateToSurvey()
+                    NotificationType.TRAINING -> selectedItem = 1
+                    NotificationType.POINTS -> selectedItem = 3
+                    else -> {}
+                }
+            }
+        )
+    } else {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = BeigeBg,
+            topBar = {
+                if (selectedItem == 0) {
+                    CenterAlignedTopAppBar(
+                        title = { },
+                        navigationIcon = {
+                            IconButton(onClick = onNavigateToSettings) {
+                                Icon(imageVector = Icons.Default.Settings, contentDescription = "設定", modifier = Modifier.size(32.dp), tint = TextMain)
+                            }
+                        },
+                        actions = {
+                            // 修改處：優化通知圖示與 Badge 位置，解決裁切問題
+                            val unreadCount = notifications.count { !it.isRead }
+                            Box(
+                                //modifier = Modifier.padding(end = 12.dp)
+                            ) {
+                                IconButton(
+                                    onClick = { showNotificationScreen = true },
+                                    modifier = Modifier.size(56.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier.size(44.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Notifications,
+                                            contentDescription = "通知中心",
+                                            modifier = Modifier.size(32.dp),
+                                            tint = TextMain
+                                        )
+
+                                        if (unreadCount > 0) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .align(Alignment.TopEnd)
+                                                    .offset(x = (-6).dp, y = 2.dp)
+                                                    .widthIn(min = 20.dp)
+                                                    .height(20.dp)
+                                                    .clip(CircleShape)
+                                                    .background(PrimaryPeach)
+                                                    .padding(horizontal = 4.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = if (unreadCount > 9) "9+" else unreadCount.toString(),
+                                                    fontSize = 11.scaledSp(),
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.White
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent)
+                    )
+                }
+            },
+            floatingActionButton = {
+                if (selectedItem == 0) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Surface(
+                            color = Color.White.copy(alpha = 0.9f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.padding(bottom = 12.dp)
+                        ) {
+                            Text(
+                                text = if (localIsSurveyComplete) "💡 預計 15 分鐘，請準備一張穩固的椅子" else "💡 請先完成評估，以便為您安排專屬任務",
+                                fontSize = 16.scaledSp(), fontWeight = FontWeight.Bold, color = PrimaryPeach, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                        }
+
+                        ScaleButton(
+                            onClick = {
+                                if (localIsSurveyComplete) selectedItem = 1 else onNavigateToSurvey()
+                            },
+                            text = if (localIsSurveyComplete) "🏃 開始今日訓練" else "前往填寫體能量表問卷",
+                            modifier = Modifier.fillMaxWidth(0.9f).height(80.dp),
+                            fontSize = if (localIsSurveyComplete) 24.sp else 22.sp,
+                            shape = RoundedCornerShape(40.dp),
+                            containerColor = PrimaryPeach,
+                            icon = if (localIsSurveyComplete) null else Icons.Default.Lock
+                        )
+                    }
+                }
+            },
+            floatingActionButtonPosition = FabPosition.Center,
+            bottomBar = {
+                ElderlyNavigationBar(selectedItem, items, icons) { selectedItem = it }
+            }
+        ) { innerPadding ->
+            Box(modifier = Modifier.padding(innerPadding)) {
+                when (selectedItem) {
+                    0 -> DashboardContent(
+                        elderName = elderName,
+                        elderLevel = elderLevel,
+                        currentPoints = currentPoints,
+                        streakDays = streakDays,
+                        currentWeek = currentWeek,
+                        isSurveyComplete = localIsSurveyComplete,
+                        sppbScore = sppbScore,
+                        onNavigateToSurvey = onNavigateToSurvey
+                    )
+                    1 -> AssignmentScreen(
+                        userLevel = elderGrade,
+                        isSurveyComplete = localIsSurveyComplete,
+                        onNavigateToSurvey = onNavigateToSurvey,
+                        onStartTraining = onStartTraining
+                    )
+                    2 -> CommunityScreen(accountId = accountId)
+                    3 -> RewardScreen(accountId = accountId, currentPoints = currentPoints, onPointsUpdated = { currentPoints = it })
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 通知頁面組件
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun NotificationScreen(
+    notifications: List<HomeNotification>,
+    onBack: () -> Unit,
+    onAction: (HomeNotification) -> Unit
+) {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = BeigeBg,
         topBar = {
-            if (selectedItem == 0) {
-                CenterAlignedTopAppBar(
-                    title = { },
-                    navigationIcon = {
-                        IconButton(onClick = onNavigateToSettings) {
-                            Icon(imageVector = Icons.Default.Settings, contentDescription = "設定", modifier = Modifier.size(32.dp), tint = TextMain)
-                        }
-                    },
-                    actions = {
-                        IconButton(onClick = { /* TODO */ }) {
-                            BadgedBox(badge = { Badge { Text(text = "3", fontSize = 10.scaledSp()) } }) {
-                                Icon(imageVector = Icons.Default.Notifications, contentDescription = "通知中心", modifier = Modifier.size(32.dp), tint = TextMain)
-                            }
-                        }
-                    },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent)
-                )
-            }
-        },
-        floatingActionButton = {
-            if (selectedItem == 0) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Surface(
-                        color = Color.White.copy(alpha = 0.9f),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    ) {
-                        Text(
-                            text = if (localIsSurveyComplete) "💡 預計 15 分鐘，請準備一張穩固的椅子" else "💡 請先完成評估，以便為您安排專屬任務",
-                            fontSize = 16.scaledSp(), fontWeight = FontWeight.Bold, color = PrimaryPeach, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+            CenterAlignedTopAppBar(
+                title = { 
+                    Text(
+                        text = "通知中心",
+                        fontSize = 24.scaledSp(),
+                        fontWeight = FontWeight.ExtraBold,
+                        color = TextMain
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "返回",
+                            modifier = Modifier.size(32.dp),
+                            tint = TextMain
                         )
                     }
-
-                    ScaleButton(
-                        onClick = {
-                            if (localIsSurveyComplete) selectedItem = 1 else onNavigateToSurvey()
-                        },
-                        text = if (localIsSurveyComplete) "🏃 開始今日訓練" else "前往填寫體能量表問卷",
-                        modifier = Modifier.fillMaxWidth(0.9f).height(80.dp),
-                        fontSize = if (localIsSurveyComplete) 24.sp else 22.sp,
-                        shape = RoundedCornerShape(40.dp),
-                        containerColor = PrimaryPeach,
-                        icon = if (localIsSurveyComplete) null else Icons.Default.Lock
+                },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent)
+            )
+        }
+    ) { innerPadding ->
+        if (notifications.isEmpty()) {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(innerPadding),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    imageVector = Icons.Default.NotificationsNone,
+                    contentDescription = null,
+                    modifier = Modifier.size(100.dp),
+                    tint = TextSub.copy(alpha = 0.3f)
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                Text(
+                    text = "目前沒有通知",
+                    fontSize = 28.scaledSp(),
+                    fontWeight = FontWeight.Bold,
+                    color = TextMain
+                )
+                Text(
+                    text = "完成訓練或收到提醒後，通知會顯示在這裡。",
+                    fontSize = 18.scaledSp(),
+                    color = TextSub,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 40.dp, vertical = 8.dp)
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(innerPadding),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                items(notifications) { notification ->
+                    NotificationCard(
+                        notification = notification,
+                        onActionClick = { onAction(notification) }
                     )
                 }
             }
-        },
-        floatingActionButtonPosition = FabPosition.Center,
-        bottomBar = {
-            ElderlyNavigationBar(selectedItem, items, icons) { selectedItem = it }
         }
-    ) { innerPadding ->
-        Box(modifier = Modifier.padding(innerPadding)) {
-            when (selectedItem) {
-                0 -> DashboardContent(
-                    elderName = elderName,
-                    elderLevel = elderLevel,
-                    currentPoints = currentPoints,
-                    streakDays = streakDays,
-                    currentWeek = currentWeek,
-                    isSurveyComplete = localIsSurveyComplete,
-                    sppbScore = sppbScore, // 修改處：傳遞 sppbScore
-                    onNavigateToSurvey = onNavigateToSurvey
+    }
+}
+
+/**
+ * 修正卡片點擊問題。
+ * 1. 移除 Surface 上的 clickable，確保點擊空白處不會觸發動作。
+ * 2. 只有底部的 Button 使用 onActionClick 進行觸發。
+ */
+@Composable
+fun NotificationCard(
+    notification: HomeNotification,
+    onActionClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = Color.White,
+        shadowElevation = 4.dp
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val iconInfo = when (notification.type) {
+                    NotificationType.SURVEY -> Icons.AutoMirrored.Filled.Assignment to PrimaryPeach
+                    NotificationType.TRAINING -> Icons.Default.FitnessCenter to SecondaryTeal
+                    NotificationType.POINTS -> Icons.Default.MonetizationOn to PrimaryPeach
+                    NotificationType.SOCIAL -> Icons.Default.Groups to SecondaryTeal
+                    NotificationType.SYSTEM -> Icons.Default.Info to Color.Gray
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(CircleShape)
+                        .background(iconInfo.second.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = iconInfo.first,
+                        contentDescription = null,
+                        tint = iconInfo.second,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = notification.title,
+                            fontSize = 22.scaledSp(),
+                            fontWeight = FontWeight.ExtraBold,
+                            color = TextMain
+                        )
+                        if (!notification.isRead) {
+                            Box(
+                                modifier = Modifier
+                                    .size(10.dp)
+                                    .clip(CircleShape)
+                                    .background(PrimaryPeach)
+                            )
+                        }
+                    }
+                    Text(
+                        text = getRelativeTimeText(notification.createdAtMillis),
+                        fontSize = 14.scaledSp(),
+                        color = TextSub
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = notification.message,
+                fontSize = 18.scaledSp(),
+                color = TextMain,
+                lineHeight = 26.sp
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = onActionClick,
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (notification.type == NotificationType.TRAINING) SecondaryTeal else PrimaryPeach
+                ),
+                shape = RoundedCornerShape(28.dp)
+            ) {
+                Text(
+                    text = when (notification.type) {
+                        NotificationType.SURVEY -> "前往評估"
+                        NotificationType.TRAINING -> "開始訓練"
+                        NotificationType.POINTS -> "查看獎勵"
+                        else -> "查看詳情"
+                    },
+                    fontSize = 20.scaledSp(),
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
                 )
-                1 -> AssignmentScreen(
-                    userLevel = elderGrade,
-                    isSurveyComplete = localIsSurveyComplete,
-                    onNavigateToSurvey = onNavigateToSurvey,
-                    onStartTraining = onStartTraining
-                )
-                2 -> CommunityScreen(accountId = accountId)
-                3 -> RewardScreen(accountId = accountId, currentPoints = currentPoints, onPointsUpdated = { currentPoints = it })
             }
         }
     }
@@ -216,15 +551,14 @@ fun DashboardContent(
     streakDays: Int,
     currentWeek: Int,
     isSurveyComplete: Boolean,
-    sppbScore: Int?, // 修改處：新增 sppbScore 參數
+    sppbScore: Int?, 
     onNavigateToSurvey: () -> Unit
 ) {
-    // 修改處：新增問候語狀態，並使用 LaunchedEffect 搭配 delay 定期更新
     var greetingText by remember { mutableStateOf(getGreetingText()) }
 
     LaunchedEffect(Unit) {
         while (true) {
-            delay(60000) // 每分鐘檢查並更新一次問候語
+            delay(60000)
             greetingText = getGreetingText()
         }
     }
@@ -235,7 +569,6 @@ fun DashboardContent(
     ) {
         item {
             Column {
-                // 修改處：將原本寫死的「早安」改為動態的 greetingText
                 Text(
                     text = "${greetingText}，${elderName}！",
                     fontSize = 32.scaledSp(),
@@ -275,7 +608,6 @@ fun DashboardContent(
                         color = Color(0xFFE8F5E9),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        // 修改處：將原本寫死的「健康狀態：優良」改為依據 sppbScore 顯示的「體能狀態」
                         Text(
                             text = "體能狀態：${getFitnessStatusText(sppbScore)}",
                             fontSize = 18.scaledSp(), fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32), modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
@@ -431,17 +763,13 @@ fun HealthRadarChart(modifier: Modifier = Modifier) {
 @Composable
 fun DigitalTwinElevatedCard() {
     ElevatedCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 280.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 280.dp),
         shape = RoundedCornerShape(32.dp),
         colors = CardDefaults.elevatedCardColors(containerColor = Color.White),
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 8.dp)
     ) {
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxSize().padding(16.dp),
             contentAlignment = Alignment.Center
         ) {
             HealthRadarChart(modifier = Modifier.size(240.dp))
@@ -465,9 +793,7 @@ fun FilledCard(
         colors = CardDefaults.cardColors(containerColor = containerColor)
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             Icon(
