@@ -75,7 +75,8 @@ data class ElderDashboardResponse(
     val grade: String,
     val points: Int,
     @SerializedName("streak_days") val streakDays: Int,
-    @SerializedName("current_week") val currentWeek: Int
+    @SerializedName("current_week") val currentWeek: Int,
+    @SerializedName("sppb_score") val sppbScore: Int? = null // 修改處：新增 SPPB 分數欄位
 )
 
 data class GetPointHistoryRequest(val account_id: Int)
