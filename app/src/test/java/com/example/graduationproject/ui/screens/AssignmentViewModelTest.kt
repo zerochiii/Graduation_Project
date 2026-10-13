@@ -134,7 +134,7 @@ class AssignmentViewModelTest {
         assertTrue(state.exercises.isEmpty())
         assertTrue(state.completedExerciseIds.isEmpty())
 
-        viewModel.updateParams(level = "A", day = 1)
+        viewModel.updateParams(level = "A", day = 1, week = 1)
         assertNotNull(viewModel.beginTraining("A1"))
     }
 
@@ -175,16 +175,65 @@ class AssignmentViewModelTest {
         )
 
         expectedRoutes.forEach { (exerciseId, expected) ->
-            val route = resolveCameraExerciseRoute(exerciseId)
+            val route = resolveCameraExerciseRoute(exerciseId, week = 1)
             assertEquals(expected.first, route?.targetFragment)
             assertEquals(expected.second, route?.resultCode)
         }
-        assertNull(resolveCameraExerciseRoute("unknown"))
+        assertNull(resolveCameraExerciseRoute("unknown", week = 1))
+    }
+
+    @Test
+    fun updateParams_usesExplicitWeekAndRegeneratesAdvancedPlan() = runBlocking {
+        val viewModel = AssignmentViewModel()
+        viewModel.updateParams(level = "B", day = 1, week = 6)
+        assertEquals("2-5分鐘/組", viewModel.loadedState().exercises.first { it.id == "B7" }.repsOrTime)
+
+        viewModel.updateParams(level = "B", day = 1, week = 7)
+        assertEquals("8分鐘/組", viewModel.loadedState().exercises.first { it.id == "B7" }.repsOrTime)
+    }
+
+    @Test
+    fun missingOrInvalidWeek_doesNotFallbackToWeekOne() = runBlocking {
+        val viewModel = AssignmentViewModel()
+
+        viewModel.updateParams(level = "B", day = 1, week = null)
+        assertTrue(viewModel.uiState.value.isWeekLoading)
+        assertNull(viewModel.uiState.value.dailyPlan)
+
+        viewModel.updateParams(level = "B", day = 1, week = 0)
+        assertFalse(viewModel.uiState.value.isWeekLoading)
+        assertNotNull(viewModel.uiState.value.weekError)
+        assertNull(viewModel.uiState.value.dailyPlan)
+
+        viewModel.updateParams(level = "B", day = 1, week = 13)
+        assertNotNull(viewModel.uiState.value.weekError)
+        assertNull(viewModel.uiState.value.dailyPlan)
+    }
+
+    @Test
+    fun trainingAttempt_capturesValidatedWeek() = runBlocking {
+        val viewModel = AssignmentViewModel()
+        viewModel.updateParams(level = "D", day = 1, week = 12)
+        viewModel.loadedState()
+
+        assertEquals(12, requireNotNull(viewModel.beginTraining("D9")).week)
+    }
+
+    @Test
+    fun walkingRoutes_useAdvancedFragmentsOnlyFromWeekSeven() {
+        assertEquals("walking_b_fragment", resolveCameraExerciseRoute("B7", 6)?.targetFragment)
+        assertEquals("walking_c_fragment", resolveCameraExerciseRoute("C8", 1)?.targetFragment)
+        assertEquals("walking_d_fragment", resolveCameraExerciseRoute("D9", 6)?.targetFragment)
+
+        assertEquals("walking_b_week7_fragment", resolveCameraExerciseRoute("B7", 7)?.targetFragment)
+        assertEquals("walking_c_week7_fragment", resolveCameraExerciseRoute("C8", 12)?.targetFragment)
+        assertEquals("walking_d_week7_fragment", resolveCameraExerciseRoute("D9", 7)?.targetFragment)
+        assertNull(resolveCameraExerciseRoute("B7", 0))
     }
 
     private suspend fun readyViewModel(): AssignmentViewModel {
         return AssignmentViewModel().also {
-            it.updateParams(level = "A", day = 1)
+            it.updateParams(level = "A", day = 1, week = 1)
             it.loadedState()
         }
     }

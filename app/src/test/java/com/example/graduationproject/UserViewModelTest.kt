@@ -9,6 +9,25 @@ import org.junit.Test
 class UserViewModelTest {
 
     @Test
+    fun notAssessed_doesNotExposeTrainingGrade() {
+        val viewModel = UserViewModel()
+        viewModel.bindAccount(1)
+        viewModel.updateAssessmentFromDashboard(1, "", null)
+
+        assertFalse(viewModel.isSurveyComplete)
+        assertNull(viewModel.currentGrade)
+    }
+
+    @Test
+    fun gradeD_isPreservedWithoutFallback() {
+        val viewModel = UserViewModel()
+        viewModel.bindAccount(1)
+        viewModel.updateAssessmentFromDashboard(1, "D", 10)
+
+        assertEquals("D", viewModel.currentGrade)
+    }
+
+    @Test
     fun blankGradeAndNullScore_isNotAssessed() {
         assertEquals(
             AssessmentState.NotAssessed,

@@ -21,10 +21,14 @@ import android.content.Intent
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import androidx.activity.viewModels
+import androidx.navigation.fragment.FragmentNavigator
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.setupWithNavController
 import com.google.mediapipe.examples.poselandmarker.databinding.ActivityMainBinding
 import com.google.mediapipe.examples.poselandmarker.fragment.PermissionsFragment
+import com.google.mediapipe.examples.poselandmarker.fragment.WalkingBWeek7Fragment
+import com.google.mediapipe.examples.poselandmarker.fragment.WalkingCWeek7Fragment
+import com.google.mediapipe.examples.poselandmarker.fragment.WalkingDWeek7Fragment
 
 internal fun resultContainsExpectedCode(resultCodes: String, expectedCode: String?): Boolean =
     expectedCode != null && resultCodes.split(",").map(String::trim).contains(expectedCode)
@@ -40,6 +44,7 @@ class MainActivity : AppCompatActivity() {
         const val EXTRA_EXPECTED_RESULT_CODE = "extra_expected_result_code"
         const val EXTRA_TRAINING_ATTEMPT_ID = "extra_training_attempt_id"
         const val EXTRA_TRAINING_COMPLETED = "extra_training_completed"
+        const val EXTRA_TRAINING_WEEK = "extra_training_week"
 
         fun resolveTargetDestination(targetFragment: String): Int? {
             return when (targetFragment) {
@@ -50,6 +55,9 @@ class MainActivity : AppCompatActivity() {
                 "walking_b_fragment" -> R.id.walking_b_fragment
                 "walking_c_fragment" -> R.id.walking_c_fragment
                 "walking_d_fragment" -> R.id.walking_d_fragment
+                "walking_b_week7_fragment" -> R.id.walking_b_fragment
+                "walking_c_week7_fragment" -> R.id.walking_c_fragment
+                "walking_d_week7_fragment" -> R.id.walking_d_fragment
                 "simulated_sitting_fragment" -> R.id.simulated_sitting_fragment
                 "toe_heel_walking_fragment" -> R.id.toe_heel_walking_fragment
                 "chair_arm_stretch_fragment" -> R.id.chair_arm_stretch_fragment
@@ -80,7 +88,11 @@ class MainActivity : AppCompatActivity() {
         val accountId = intent.getIntExtra(EXTRA_ACCOUNT_ID, -1)
         val userLevel = intent.getStringExtra(EXTRA_USER_LEVEL) ?: ""
         setResult(Activity.RESULT_CANCELED, createTrainingResultIntent(completed = false))
-        viewModel.setAccountInfo(accountId, userLevel)
+        viewModel.setAccountInfo(
+            accountId,
+            userLevel,
+            intent.getStringExtra(EXTRA_EXPECTED_RESULT_CODE)
+        )
 
         val navHostFragment =
             supportFragmentManager.findFragmentById(R.id.fragment_container) as NavHostFragment
@@ -93,6 +105,17 @@ class MainActivity : AppCompatActivity() {
             ?: R.id.permissions_fragment
 
         val navGraph = navController.navInflater.inflate(R.navigation.nav_graph)
+        val advancedFragment = when (targetFragment) {
+            "walking_b_week7_fragment" -> WalkingBWeek7Fragment::class.java.name
+            "walking_c_week7_fragment" -> WalkingCWeek7Fragment::class.java.name
+            "walking_d_week7_fragment" -> WalkingDWeek7Fragment::class.java.name
+            else -> null
+        }
+        if (advancedFragment != null) {
+            val destination = targetFragment?.let(::resolveTargetDestination)
+            (destination?.let(navGraph::findNode) as? FragmentNavigator.Destination)
+                ?.setClassName(advancedFragment)
+        }
         navGraph.setStartDestination(startDestination)
         navController.graph = navGraph
 
