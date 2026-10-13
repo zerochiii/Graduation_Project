@@ -28,6 +28,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
+import com.google.gson.annotations.SerializedName
 
 private val BeigeBg = Color(0xFFFDFCF9)
 private val PrimaryPeach = Color(0xFFFF8A65)
@@ -50,7 +51,7 @@ data class PointRecord(
     val title: String,
     val points: Int,
     val date: String,
-    val isEarning: Boolean
+    @SerializedName("is_earning") val isEarning: Boolean
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
