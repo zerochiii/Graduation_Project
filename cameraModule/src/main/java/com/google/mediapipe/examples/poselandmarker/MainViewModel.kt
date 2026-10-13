@@ -19,6 +19,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -78,6 +79,24 @@ internal class SingleTrainingResultGuard {
         return true
     }
 }
+
+internal fun isSuccessfulSaveResponse(responseCode: Int, responseBody: String?): Boolean {
+    if (responseCode !in 200..299 || responseBody.isNullOrBlank()) return false
+
+    return runCatching {
+        val responseJson = JsonParser.parseString(responseBody)
+        if (!responseJson.isJsonObject) return@runCatching false
+        val success = responseJson.asJsonObject.get("success")
+        success?.isJsonPrimitive == true &&
+            success.asJsonPrimitive.isBoolean &&
+            success.asBoolean
+    }.getOrDefault(false)
+}
+
+internal fun resultToPublishAfterSave(
+    result: ExerciseResult,
+    saveSucceeded: Boolean
+): ExerciseResult? = result.takeIf { saveSucceeded }
 
 class MainViewModel : ViewModel() {
 
@@ -141,14 +160,13 @@ class MainViewModel : ViewModel() {
         }
         if (!submissionGuard.trySubmit()) return
 
-        _lastResult.postValue(result)
-
         _saveStatus.postValue(SaveStatus.SAVING)
         viewModelScope.launch {
             val success = withContext(Dispatchers.IO) {
+                var connection: HttpURLConnection? = null
                 try {
                     val url = URL(BASE_URL + "api/save_exercise_record.php")
-                    val connection = (url.openConnection() as HttpURLConnection).apply {
+                    connection = (url.openConnection() as HttpURLConnection).apply {
                         requestMethod = "POST"
                         doOutput = true
                         setRequestProperty("Content-Type", "application/json; charset=utf-8")
@@ -170,15 +188,23 @@ class MainViewModel : ViewModel() {
                     }
 
                     val responseCode = connection.responseCode
-                    connection.disconnect()
-                    responseCode == HttpURLConnection.HTTP_OK
+                    val responseBody = (if (responseCode in 200..299) {
+                        connection.inputStream
+                    } else {
+                        connection.errorStream
+                    })?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+
+                    isSuccessfulSaveResponse(responseCode, responseBody)
                 } catch (e: Exception) {
                     android.util.Log.e(TAG, "上傳訓練紀錄失敗", e)
                     false
+                } finally {
+                    connection?.disconnect()
                 }
             }
 
             android.util.Log.d(TAG, "訓練成績存檔${if (success) "成功" else "失敗"}: $result (exercise_code=$exerciseCode)")
+            resultToPublishAfterSave(result, success)?.let(_lastResult::postValue)
             _saveStatus.postValue(if (success) SaveStatus.SUCCESS else SaveStatus.FAILED)
         }
     }
