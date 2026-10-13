@@ -12,12 +12,15 @@ import kotlinx.coroutines.flow.asStateFlow
 data class AssignmentUiState(
     val dailyPlan: DailyPlan? = null,
     val exercises: List<Exercise> = emptyList(),
-    val completedExerciseIds: Set<String> = emptySet()
+    val completedExerciseIds: Set<String> = emptySet(),
+    val isWeekLoading: Boolean = true,
+    val weekError: String? = null
 )
 
 internal data class TrainingAttempt(
     val id: Long,
-    val exerciseId: String
+    val exerciseId: String,
+    val week: Int
 )
 
 class AssignmentViewModel(
@@ -26,6 +29,7 @@ class AssignmentViewModel(
 
     private var level: String? = null
     private var day: Int = 1
+    private var week: Int? = null
     private var completedIds: Set<String> = emptySet()
     private var nextTrainingAttemptId = 1L
     private var activeTrainingAttempt: TrainingAttempt? = null
@@ -34,7 +38,14 @@ class AssignmentViewModel(
     val uiState: StateFlow<AssignmentUiState> = _uiState.asStateFlow()
 
     private fun refreshUiState() {
-        val plan = level?.let { repository.getDailyPlan(it, day) }
+        val currentWeek = week
+        val weekError = currentWeek?.takeUnless { it in 1..12 }
+            ?.let { "訓練週次資料異常（$it）" }
+        val plan = if (currentWeek != null && weekError == null) {
+            level?.let { repository.getDailyPlan(it, day, currentWeek) }
+        } else {
+            null
+        }
         val processedExercises = plan?.exercises?.let { list ->
             var foundCurrent = false
             list.map { exercise ->
@@ -52,23 +63,32 @@ class AssignmentViewModel(
         _uiState.value = AssignmentUiState(
             dailyPlan = plan,
             exercises = processedExercises,
-            completedExerciseIds = completedIds
+            completedExerciseIds = completedIds,
+            isWeekLoading = currentWeek == null,
+            weekError = weekError
         )
     }
 
     /**
-     * 更新目前的訓練等級與天數
+     * 更新目前的訓練等級、天數與週次。
      */
-    fun updateParams(level: String, day: Int) {
+    fun updateParams(level: String, day: Int, week: Int?) {
+        val planChanged = this.level != level || this.day != day || this.week != week
+        if (planChanged) {
+            completedIds = emptySet()
+            activeTrainingAttempt = null
+        }
         this.level = level
         this.day = day
+        this.week = week
         refreshUiState()
     }
 
     internal fun beginTraining(exerciseId: String): TrainingAttempt? {
         if (activeTrainingAttempt != null || currentExerciseId() != exerciseId) return null
 
-        return TrainingAttempt(nextTrainingAttemptId++, exerciseId).also {
+        val currentWeek = week?.takeIf { it in 1..12 } ?: return null
+        return TrainingAttempt(nextTrainingAttemptId++, exerciseId, currentWeek).also {
             activeTrainingAttempt = it
         }
     }
@@ -96,6 +116,7 @@ class AssignmentViewModel(
     fun resetForAccountChange() {
         level = null
         day = 1
+        week = null
         completedIds = emptySet()
         nextTrainingAttemptId = 1L
         activeTrainingAttempt = null
@@ -104,7 +125,8 @@ class AssignmentViewModel(
 
     private fun currentExerciseId(): String? {
         val currentLevel = level ?: return null
-        return repository.getDailyPlan(currentLevel, day)
+        val currentWeek = week?.takeIf { it in 1..12 } ?: return null
+        return repository.getDailyPlan(currentLevel, day, currentWeek)
             .exercises
             .firstOrNull { it.id !in completedIds }
             ?.id

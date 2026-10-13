@@ -137,7 +137,7 @@ fun ElderlyDashboard(
     var elderLevel by remember { mutableIntStateOf(1) }
     var currentPoints by remember { mutableIntStateOf(0) }
     var streakDays by remember { mutableIntStateOf(0) }
-    var currentWeek by remember { mutableIntStateOf(1) }
+    var currentWeek by remember(accountId) { mutableStateOf<Int?>(null) }
     var selectedItem by remember { mutableIntStateOf(0) }
     val assessmentState = userViewModel.assessmentState
     val isSurveyComplete = assessmentState is AssessmentState.Assessed
@@ -373,6 +373,7 @@ fun ElderlyDashboard(
                     )
                     1 -> AssignmentScreen(
                         userLevel = currentGrade.orEmpty(),
+                        currentWeek = currentWeek,
                         isSurveyComplete = isSurveyComplete,
                         onNavigateToSurvey = onNavigateToSurvey,
                         onStartTraining = onStartTraining,
@@ -585,7 +586,7 @@ fun DashboardContent(
     elderLevel: Int,
     currentPoints: Int,
     streakDays: Int,
-    currentWeek: Int,
+    currentWeek: Int?,
     assessmentState: AssessmentState,
     onNavigateToSurvey: () -> Unit
 ) {
@@ -682,7 +683,11 @@ fun DashboardContent(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "目前進度：第 $currentWeek 週",
+                        text = when (currentWeek) {
+                            null -> "目前進度：載入中"
+                            in 1..12 -> "目前進度：第 $currentWeek 週"
+                            else -> "目前進度：資料異常"
+                        },
                         fontSize = 18.scaledSp(), fontWeight = FontWeight.Bold, color = SecondaryTeal
                     )
                     Text(
@@ -692,7 +697,7 @@ fun DashboardContent(
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 LinearProgressIndicator(
-                    progress = { currentWeek.toFloat() / 12f },
+                    progress = { currentWeek?.takeIf { it in 1..12 }?.toFloat()?.div(12f) ?: 0f },
                     modifier = Modifier.fillMaxWidth().height(12.dp).clip(RoundedCornerShape(6.dp)),
                     color = SecondaryTeal,
                     trackColor = SecondaryTeal.copy(alpha = 0.2f)

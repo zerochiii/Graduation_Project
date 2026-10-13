@@ -53,6 +53,32 @@ enum class SaveStatus {
     FAILED
 }
 
+internal fun resolveExpectedExerciseCode(
+    resultCodes: String,
+    level: String,
+    expectedCode: String?
+): String? {
+    val baseLevel = level.trim().uppercase().take(1)
+    if (baseLevel.isBlank() || resultCodes.isBlank()) return null
+    val codes = resultCodes.split(",").map(String::trim)
+    return if (expectedCode != null) {
+        expectedCode.takeIf { it.startsWith("$baseLevel-") && it in codes }
+    } else {
+        codes.firstOrNull { it.startsWith("$baseLevel-") }
+    }
+}
+
+internal class SingleTrainingResultGuard {
+    private var submitted = false
+
+    @Synchronized
+    fun trySubmit(): Boolean {
+        if (submitted) return false
+        submitted = true
+        return true
+    }
+}
+
 class MainViewModel : ViewModel() {
 
     companion object {
@@ -84,10 +110,13 @@ class MainViewModel : ViewModel() {
 
     private var accountId: Int = -1
     private var userLevel: String = ""
+    private var expectedExerciseCode: String? = null
+    private val submissionGuard = SingleTrainingResultGuard()
 
-    fun setAccountInfo(accountId: Int, userLevel: String) {
+    fun setAccountInfo(accountId: Int, userLevel: String, expectedCode: String?) {
         this.accountId = accountId
-        this.userLevel = userLevel
+        this.userLevel = userLevel.trim().uppercase().take(1)
+        this.expectedExerciseCode = expectedCode
     }
 
     private val _lastResult = MutableLiveData<ExerciseResult>()
@@ -97,9 +126,11 @@ class MainViewModel : ViewModel() {
     val saveStatus: LiveData<SaveStatus> get() = _saveStatus
 
     fun postResult(result: ExerciseResult) {
-        _lastResult.postValue(result)
-
-        val exerciseCode = resolveExerciseCode(result.exerciseId, userLevel)
+        val exerciseCode = resolveExpectedExerciseCode(
+            result.exerciseId,
+            userLevel,
+            expectedExerciseCode
+        )
         if (accountId <= 0 || exerciseCode == null) {
             android.util.Log.w(
                 TAG,
@@ -108,6 +139,9 @@ class MainViewModel : ViewModel() {
             _saveStatus.postValue(SaveStatus.FAILED)
             return
         }
+        if (!submissionGuard.trySubmit()) return
+
+        _lastResult.postValue(result)
 
         _saveStatus.postValue(SaveStatus.SAVING)
         viewModelScope.launch {
@@ -149,13 +183,6 @@ class MainViewModel : ViewModel() {
         }
     }
 
-
-    private fun resolveExerciseCode(exerciseId: String, level: String): String? {
-        if (level.isBlank() || exerciseId.isBlank()) return null
-        return exerciseId.split(",")
-            .map { it.trim() }
-            .firstOrNull { it.startsWith("$level-") }
-    }
 
     fun setDelegate(delegate: Int) {
         _delegate = delegate

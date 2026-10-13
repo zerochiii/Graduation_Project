@@ -42,8 +42,9 @@ private val TextSub = Color(0xFF5D5D5D)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AssignmentScreen(
-    userLevel: String = "A",
+    userLevel: String = "",
     currentDay: Int = 1,
+    currentWeek: Int? = null,
     isSurveyComplete: Boolean = false,
     onNavigateToSurvey: () -> Unit = {},
     onStartTraining: (String?) -> Unit = {},
@@ -58,9 +59,9 @@ fun AssignmentScreen(
         }
     }
 
-    LaunchedEffect(userLevel, currentDay, isSurveyComplete) {
+    LaunchedEffect(userLevel, currentDay, currentWeek, isSurveyComplete) {
         if (isSurveyComplete && userLevel.isNotEmpty()) {
-            viewModel.updateParams(userLevel, currentDay)
+            viewModel.updateParams(userLevel, currentDay, currentWeek)
         }
     }
 
@@ -69,7 +70,9 @@ fun AssignmentScreen(
             LargeTopAppBar(
                 title = {
                     Text(
-                        "訓練手冊 - 第 1 週",
+                        currentWeek?.takeIf { it in 1..12 }
+                            ?.let { "訓練手冊 - 第 $it 週" }
+                            ?: "訓練手冊",
                         fontSize = 32.scaledSp(),
                         fontWeight = FontWeight.Bold,
                         color = TextMain
@@ -119,6 +122,18 @@ fun AssignmentScreen(
 
             if (!isSurveyComplete || userLevel.isEmpty()) {
                 EmptyStateView(onNavigateToSurvey)
+            } else if (uiState.isWeekLoading) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            } else if (uiState.weekError != null) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = uiState.weekError ?: "訓練週次資料異常",
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 20.scaledSp()
+                    )
+                }
             } else {
                 LazyColumn(
                     modifier = Modifier

@@ -122,8 +122,6 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
                 onNavigateToSurvey = { navController.navigate("survey") },
                 onStartTraining = { exerciseId ->
                     val selectedExerciseId = exerciseId ?: return@ElderlyDashboard
-                    val route = resolveCameraExerciseRoute(selectedExerciseId)
-                        ?: return@ElderlyDashboard
                     val grade = userViewModel.currentGrade
                     if (grade == null) {
                         Toast.makeText(context, "尚未取得有效評估級別，無法開始訓練", Toast.LENGTH_SHORT).show()
@@ -131,6 +129,11 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
                     }
                     val attempt = assignmentViewModel.beginTraining(selectedExerciseId)
                         ?: return@ElderlyDashboard
+                    val route = resolveCameraExerciseRoute(selectedExerciseId, attempt.week)
+                        ?: run {
+                            assignmentViewModel.cancelActiveTraining()
+                            return@ElderlyDashboard
+                        }
                     val intent = Intent(context, CameraActivity::class.java)
                     intent.putExtra(CameraActivity.EXTRA_TARGET_FRAGMENT, route.targetFragment)
                     intent.putExtra(CameraActivity.EXTRA_EXPECTED_RESULT_CODE, route.resultCode)
@@ -138,6 +141,7 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
                     intent.putExtra(CameraActivity.EXTRA_TRAINING_ATTEMPT_ID, attempt.id)
                     intent.putExtra(CameraActivity.EXTRA_ACCOUNT_ID, globalAccountId)
                     intent.putExtra(CameraActivity.EXTRA_USER_LEVEL, grade)
+                    intent.putExtra(CameraActivity.EXTRA_TRAINING_WEEK, attempt.week)
                     trainingLauncher.launch(intent)
                 },
                 assignmentViewModel = assignmentViewModel
@@ -226,12 +230,13 @@ internal data class CameraExerciseRoute(
     val resultCode: String
 )
 
-internal fun resolveCameraExerciseRoute(exerciseId: String): CameraExerciseRoute? {
+internal fun resolveCameraExerciseRoute(exerciseId: String, week: Int): CameraExerciseRoute? {
+    if (week !in 1..12) return null
     return when (exerciseId) {
         "A1" -> CameraExerciseRoute(CAMERA_FRAGMENT_WALKING, "A-1")
-        "B7" -> CameraExerciseRoute(CAMERA_FRAGMENT_WALKING_B, "B-1")
-        "C8" -> CameraExerciseRoute(CAMERA_FRAGMENT_WALKING_C, "C-1")
-        "D9" -> CameraExerciseRoute(CAMERA_FRAGMENT_WALKING_D, "D-1")
+        "B7" -> CameraExerciseRoute(if (week >= 7) "walking_b_week7_fragment" else CAMERA_FRAGMENT_WALKING_B, "B-1")
+        "C8" -> CameraExerciseRoute(if (week >= 7) "walking_c_week7_fragment" else CAMERA_FRAGMENT_WALKING_C, "C-1")
+        "D9" -> CameraExerciseRoute(if (week >= 7) "walking_d_week7_fragment" else CAMERA_FRAGMENT_WALKING_D, "D-1")
         "A2" -> CameraExerciseRoute(CAMERA_FRAGMENT_SQUEEZE_BALL, "A-2")
         "B2" -> CameraExerciseRoute(CAMERA_FRAGMENT_SQUEEZE_BALL, "B-3")
         "A3" -> CameraExerciseRoute(CAMERA_FRAGMENT_BOTTLE_LIFT, "A-3")
