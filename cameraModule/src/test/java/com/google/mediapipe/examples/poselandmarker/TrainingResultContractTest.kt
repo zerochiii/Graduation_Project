@@ -32,4 +32,27 @@ class TrainingResultContractTest {
         assertTrue(guard.trySubmit())
         assertFalse(guard.trySubmit())
     }
+
+    @Test
+    fun saveResponse_requiresHttpAndBusinessSuccess() {
+        assertTrue(isSuccessfulSaveResponse(200, "{\"success\":true}"))
+        assertFalse(isSuccessfulSaveResponse(200, "{\"success\":false}"))
+        assertFalse(isSuccessfulSaveResponse(400, "{\"success\":false}"))
+        assertFalse(isSuccessfulSaveResponse(500, "{\"success\":true}"))
+    }
+
+    @Test
+    fun saveResponse_rejectsMalformedOrMissingSuccess() {
+        assertFalse(isSuccessfulSaveResponse(200, "not-json"))
+        assertFalse(isSuccessfulSaveResponse(200, "{\"message\":\"ok\"}"))
+        assertFalse(isSuccessfulSaveResponse(200, null))
+    }
+
+    @Test
+    fun trainingResult_isPublishedOnlyAfterSuccessfulSave() {
+        val result = ExerciseResult(exerciseName = "test", exerciseId = "D-6")
+
+        assertNull(resultToPublishAfterSave(result, saveSucceeded = false))
+        assertEquals(result, resultToPublishAfterSave(result, saveSucceeded = true))
+    }
 }

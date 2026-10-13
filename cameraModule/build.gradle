@@ -61,6 +61,7 @@ dependencies {
 
     // Kotlin lang
     implementation 'androidx.core:core-ktx:1.8.0'
+    implementation 'com.google.code.gson:gson:2.9.1'
 
     // App compat and UI things
     implementation 'androidx.appcompat:appcompat:1.5.1'
