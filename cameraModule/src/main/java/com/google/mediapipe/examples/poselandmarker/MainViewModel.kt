@@ -23,9 +23,12 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.google.gson.annotations.SerializedName
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.IOException
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
@@ -166,6 +169,73 @@ internal fun isSuccessfulSaveResponse(
     expectedRequestId
 ) != null
 
+internal enum class TrainingSaveAttemptOutcome {
+    SUCCESS,
+    RETRYABLE_FAILURE,
+    PERMANENT_FAILURE
+}
+
+internal const val TRAINING_SAVE_MAX_ATTEMPTS = 3
+
+internal fun classifyTrainingSaveResponse(
+    responseCode: Int,
+    responseBody: String?,
+    expectedRequestId: String
+): TrainingSaveAttemptOutcome = when {
+    responseCode in setOf(500, 502, 503, 504) ->
+        TrainingSaveAttemptOutcome.RETRYABLE_FAILURE
+
+    responseCode !in 200..299 ->
+        TrainingSaveAttemptOutcome.PERMANENT_FAILURE
+
+    isSuccessfulSaveResponse(responseCode, responseBody, expectedRequestId) ->
+        TrainingSaveAttemptOutcome.SUCCESS
+
+    else -> TrainingSaveAttemptOutcome.PERMANENT_FAILURE
+}
+
+internal fun retryDelayMillis(completedAttemptNumber: Int): Long = when (completedAttemptNumber) {
+    1 -> 1_000L
+    2 -> 2_000L
+    else -> 0L
+}
+
+internal suspend fun executeTrainingSaveWithRetry(
+    pending: PendingTrainingSave,
+    maxAttempts: Int = TRAINING_SAVE_MAX_ATTEMPTS,
+    delayStrategy: suspend (Long) -> Unit = { delay(it) },
+    attempt: suspend (PendingTrainingSave) -> TrainingSaveAttemptOutcome
+): Boolean {
+    require(maxAttempts > 0) { "maxAttempts 必須大於 0" }
+
+    for (attemptNumber in 1..maxAttempts) {
+        val outcome = try {
+            attempt(pending)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: IOException) {
+            TrainingSaveAttemptOutcome.RETRYABLE_FAILURE
+        } catch (e: Exception) {
+            TrainingSaveAttemptOutcome.PERMANENT_FAILURE
+        }
+
+        when (outcome) {
+            TrainingSaveAttemptOutcome.SUCCESS -> return true
+            TrainingSaveAttemptOutcome.PERMANENT_FAILURE -> return false
+            TrainingSaveAttemptOutcome.RETRYABLE_FAILURE -> {
+                if (attemptNumber == maxAttempts) return false
+                delayStrategy(retryDelayMillis(attemptNumber))
+            }
+        }
+    }
+    return false
+}
+
+internal fun pendingAfterSave(
+    pending: PendingTrainingSave,
+    saveSucceeded: Boolean
+): PendingTrainingSave? = pending.takeUnless { saveSucceeded }
+
 internal fun resultToPublishAfterSave(
     result: ExerciseResult,
     saveSucceeded: Boolean
@@ -244,44 +314,11 @@ class MainViewModel : ViewModel() {
 
         _saveStatus.postValue(SaveStatus.SAVING)
         viewModelScope.launch {
-            val success = withContext(Dispatchers.IO) {
-                var connection: HttpURLConnection? = null
-                try {
-                    val url = URL(BASE_URL + "api/save_exercise_record.php")
-                    connection = (url.openConnection() as HttpURLConnection).apply {
-                        requestMethod = "POST"
-                        doOutput = true
-                        setRequestProperty("Content-Type", "application/json; charset=utf-8")
-                        connectTimeout = 8000
-                        readTimeout = 8000
-                    }
-
-                    val body = buildTrainingSaveRequestBody(pending)
-
-                    OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use { writer ->
-                        writer.write(body.toString())
-                        writer.flush()
-                    }
-
-                    val responseCode = connection.responseCode
-                    val responseBody = (if (responseCode in 200..299) {
-                        connection.inputStream
-                    } else {
-                        connection.errorStream
-                    })?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
-
-                    isSuccessfulSaveResponse(
-                        responseCode,
-                        responseBody,
-                        pending.requestId
-                    )
-                } catch (e: Exception) {
-                    android.util.Log.e(TAG, "上傳訓練紀錄失敗", e)
-                    false
-                } finally {
-                    connection?.disconnect()
-                }
-            }
+            val success = executeTrainingSaveWithRetry(
+                pending = pending,
+                attempt = ::sendPendingTrainingSave
+            )
+            pendingTrainingSave = pendingAfterSave(pending, success)
 
             android.util.Log.d(
                 TAG,
@@ -290,6 +327,43 @@ class MainViewModel : ViewModel() {
             )
             resultToPublishAfterSave(pending.result, success)?.let(_lastResult::postValue)
             _saveStatus.postValue(if (success) SaveStatus.SUCCESS else SaveStatus.FAILED)
+        }
+    }
+
+    private suspend fun sendPendingTrainingSave(
+        pending: PendingTrainingSave
+    ): TrainingSaveAttemptOutcome = withContext(Dispatchers.IO) {
+        var connection: HttpURLConnection? = null
+        try {
+            val url = URL(BASE_URL + "api/save_exercise_record.php")
+            connection = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                connectTimeout = 8000
+                readTimeout = 8000
+            }
+
+            val body = buildTrainingSaveRequestBody(pending)
+            OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use { writer ->
+                writer.write(body.toString())
+                writer.flush()
+            }
+
+            val responseCode = connection.responseCode
+            val responseBody = (if (responseCode in 200..299) {
+                connection.inputStream
+            } else {
+                connection.errorStream
+            })?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+
+            classifyTrainingSaveResponse(
+                responseCode,
+                responseBody,
+                pending.requestId
+            )
+        } finally {
+            connection?.disconnect()
         }
     }
 

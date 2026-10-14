@@ -1,10 +1,15 @@
 package com.google.mediapipe.examples.poselandmarker
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.IOException
+import java.net.SocketTimeoutException
 
 class TrainingResultContractTest {
 
@@ -147,4 +152,226 @@ class TrainingResultContractTest {
         assertNull(resultToPublishAfterSave(result, saveSucceeded = false))
         assertEquals(result, resultToPublishAfterSave(result, saveSucceeded = true))
     }
+
+    @Test
+    fun retry_firstAttemptSuccess_callsOnceWithoutDelay() = runBlocking {
+        val pending = testPendingSave()
+        var attempts = 0
+        val delays = mutableListOf<Long>()
+
+        val success = executeTrainingSaveWithRetry(
+            pending = pending,
+            delayStrategy = delays::add
+        ) {
+            attempts++
+            TrainingSaveAttemptOutcome.SUCCESS
+        }
+
+        assertTrue(success)
+        assertEquals(1, attempts)
+        assertTrue(delays.isEmpty())
+    }
+
+    @Test
+    fun retry_ioFailureThenSuccess_reusesSamePendingAndPayload() = runBlocking {
+        val pending = testPendingSave()
+        val attempts = mutableListOf<PendingTrainingSave>()
+        val payloads = mutableListOf<String>()
+        val delays = mutableListOf<Long>()
+
+        val success = executeTrainingSaveWithRetry(
+            pending = pending,
+            delayStrategy = delays::add
+        ) { attemptedPending ->
+            attempts += attemptedPending
+            payloads += buildTrainingSaveRequestBody(attemptedPending).toString()
+            if (attempts.size == 1) throw IOException("connection reset")
+            TrainingSaveAttemptOutcome.SUCCESS
+        }
+
+        assertTrue(success)
+        assertEquals(2, attempts.size)
+        attempts.forEach { assertSame(pending, it) }
+        assertEquals(1, attempts.map(PendingTrainingSave::requestId).distinct().size)
+        assertEquals(1, payloads.distinct().size)
+        assertEquals(listOf(1_000L), delays)
+    }
+
+    @Test
+    fun retry_http500ThenSuccess_retriesOnce() = runBlocking {
+        val pending = testPendingSave()
+        var attempts = 0
+
+        val success = executeTrainingSaveWithRetry(
+            pending = pending,
+            delayStrategy = {}
+        ) {
+            attempts++
+            if (attempts == 1) {
+                classifyTrainingSaveResponse(500, null, pending.requestId)
+            } else {
+                TrainingSaveAttemptOutcome.SUCCESS
+            }
+        }
+
+        assertTrue(success)
+        assertEquals(2, attempts)
+    }
+
+    @Test
+    fun retry_twoServerFailuresThenSuccess_usesThreeAttemptsAndBoundedBackoff() = runBlocking {
+        val pending = testPendingSave()
+        var attempts = 0
+        val delays = mutableListOf<Long>()
+
+        val success = executeTrainingSaveWithRetry(
+            pending = pending,
+            delayStrategy = delays::add
+        ) {
+            attempts++
+            if (attempts < 3) TrainingSaveAttemptOutcome.RETRYABLE_FAILURE
+            else TrainingSaveAttemptOutcome.SUCCESS
+        }
+
+        assertTrue(success)
+        assertEquals(3, attempts)
+        assertEquals(listOf(1_000L, 2_000L), delays)
+    }
+
+    @Test
+    fun retry_threeServerFailures_stopsAndDoesNotPublishResult() = runBlocking {
+        val pending = testPendingSave()
+        var attempts = 0
+
+        val success = executeTrainingSaveWithRetry(
+            pending = pending,
+            delayStrategy = {}
+        ) {
+            attempts++
+            TrainingSaveAttemptOutcome.RETRYABLE_FAILURE
+        }
+
+        assertFalse(success)
+        assertEquals(TRAINING_SAVE_MAX_ATTEMPTS, attempts)
+        assertNull(resultToPublishAfterSave(pending.result, success))
+    }
+
+    @Test
+    fun retry_nonRetryableResponsesStopAfterOneAttempt() = runBlocking {
+        val pending = testPendingSave()
+        val outcomes = listOf(
+            classifyTrainingSaveResponse(400, null, pending.requestId),
+            classifyTrainingSaveResponse(404, null, pending.requestId),
+            classifyTrainingSaveResponse(409, null, pending.requestId),
+            classifyTrainingSaveResponse(
+                200,
+                """{"success":false,"request_id":"${pending.requestId}"}""",
+                pending.requestId
+            ),
+            classifyTrainingSaveResponse(
+                200,
+                """{"success":true,"request_id":"22222222-2222-4222-8222-222222222222"}""",
+                pending.requestId
+            ),
+            classifyTrainingSaveResponse(200, "not-json", pending.requestId)
+        )
+
+        outcomes.forEach { outcome ->
+            var attempts = 0
+            val success = executeTrainingSaveWithRetry(
+                pending = pending,
+                delayStrategy = {}
+            ) {
+                attempts++
+                outcome
+            }
+            assertFalse(success)
+            assertEquals(1, attempts)
+        }
+    }
+
+    @Test
+    fun retry_timeoutThenReplaySuccess_publishesOnlyOnce() = runBlocking {
+        val pending = testPendingSave()
+        var attempts = 0
+        var published = 0
+
+        val success = executeTrainingSaveWithRetry(
+            pending = pending,
+            delayStrategy = {}
+        ) {
+            attempts++
+            if (attempts == 1) throw SocketTimeoutException("timed out")
+            classifyTrainingSaveResponse(
+                200,
+                """{"success":true,"request_id":"${pending.requestId}","idempotent_replay":true}""",
+                pending.requestId
+            )
+        }
+        resultToPublishAfterSave(pending.result, success)?.let { published++ }
+
+        assertTrue(success)
+        assertEquals(2, attempts)
+        assertEquals(1, published)
+    }
+
+    @Test
+    fun pendingState_clearsOnlyAfterSuccess() {
+        val pending = testPendingSave()
+
+        assertNull(pendingAfterSave(pending, saveSucceeded = true))
+        assertSame(pending, pendingAfterSave(pending, saveSucceeded = false))
+    }
+
+    @Test
+    fun retryPolicy_onlyRetriesExplicitTransientHttpStatuses() {
+        val pending = testPendingSave()
+
+        listOf(500, 502, 503, 504).forEach { status ->
+            assertEquals(
+                TrainingSaveAttemptOutcome.RETRYABLE_FAILURE,
+                classifyTrainingSaveResponse(status, null, pending.requestId)
+            )
+        }
+        listOf(400, 401, 404, 408, 409, 429, 501).forEach { status ->
+            assertEquals(
+                TrainingSaveAttemptOutcome.PERMANENT_FAILURE,
+                classifyTrainingSaveResponse(status, null, pending.requestId)
+            )
+        }
+    }
+
+    @Test
+    fun retry_coroutineCancellationIsNotRetried() = runBlocking {
+        val pending = testPendingSave()
+        var attempts = 0
+        var cancellationPropagated = false
+
+        try {
+            executeTrainingSaveWithRetry(
+                pending = pending,
+                delayStrategy = {}
+            ) {
+                attempts++
+                throw CancellationException("Activity finished")
+            }
+        } catch (_: CancellationException) {
+            cancellationPropagated = true
+        }
+
+        assertTrue(cancellationPropagated)
+        assertEquals(1, attempts)
+    }
+
+    private fun testPendingSave() = PendingTrainingSave(
+        requestId = "11111111-1111-4111-8111-111111111111",
+        accountId = 7,
+        exerciseCode = "D-6",
+        result = ExerciseResult(
+            exerciseName = "test",
+            exerciseId = "D-6",
+            accuracy = 88f,
+            durationSeconds = 120
+        )
+    )
 }
