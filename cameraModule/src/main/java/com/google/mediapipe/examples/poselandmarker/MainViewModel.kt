@@ -19,14 +19,17 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.gson.Gson
+import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.google.gson.annotations.SerializedName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.UUID
 
 /**
  *  This ViewModel is used to store pose landmarker helper settings
@@ -40,6 +43,29 @@ data class ExerciseResult(
     val accuracy: Float = 0f,     // 平均準確率
     val durationSeconds: Int = 0, // 總運動時長 (秒)
     val timestamp: Long = System.currentTimeMillis()
+)
+
+internal data class PendingTrainingSave(
+    val requestId: String,
+    val accountId: Int,
+    val exerciseCode: String,
+    val result: ExerciseResult
+)
+
+internal data class TrainingSaveResponse(
+    val success: Boolean? = null,
+    val message: String? = null,
+    @SerializedName("request_id") val requestId: String? = null,
+    @SerializedName("idempotent_replay") val idempotentReplay: Boolean? = null,
+    @SerializedName("base_points") val basePoints: Int? = null,
+    @SerializedName("streak_days") val streakDays: Int? = null,
+    @SerializedName("streak_bonus_percent") val streakBonusPercent: Int? = null,
+    @SerializedName("exp_gained") val expGained: Int? = null,
+    @SerializedName("points_earned") val pointsEarned: Int? = null,
+    @SerializedName("total_exp") val totalExp: Int? = null,
+    @SerializedName("current_points") val currentPoints: Int? = null,
+    val level: Int? = null,
+    @SerializedName("leveled_up") val leveledUp: Boolean? = null
 )
 enum class ExerciseMode {
     LEG_LIFT,      // 抬腿 (使用 Pose)
@@ -80,18 +106,65 @@ internal class SingleTrainingResultGuard {
     }
 }
 
-internal fun isSuccessfulSaveResponse(responseCode: Int, responseBody: String?): Boolean {
-    if (responseCode !in 200..299 || responseBody.isNullOrBlank()) return false
+internal fun getOrCreatePendingTrainingSave(
+    current: PendingTrainingSave?,
+    accountId: Int,
+    exerciseCode: String,
+    result: ExerciseResult,
+    requestIdFactory: () -> String = { UUID.randomUUID().toString() }
+): PendingTrainingSave = current ?: PendingTrainingSave(
+    requestId = requestIdFactory(),
+    accountId = accountId,
+    exerciseCode = exerciseCode,
+    result = result
+)
+
+internal fun buildTrainingSaveRequestBody(pending: PendingTrainingSave): JsonObject =
+    JsonObject().apply {
+        addProperty("request_id", pending.requestId)
+        addProperty("account_id", pending.accountId)
+        addProperty("exercise_code", pending.exerciseCode)
+        addProperty("accuracy", pending.result.accuracy)
+        addProperty("duration_seconds", pending.result.durationSeconds)
+        addProperty("exp_gained", pending.result.accuracy.toInt())
+    }
+
+internal fun parseVerifiedTrainingSaveResponse(
+    responseCode: Int,
+    responseBody: String?,
+    expectedRequestId: String
+): TrainingSaveResponse? {
+    if (responseCode !in 200..299 || responseBody.isNullOrBlank()) return null
 
     return runCatching {
         val responseJson = JsonParser.parseString(responseBody)
-        if (!responseJson.isJsonObject) return@runCatching false
-        val success = responseJson.asJsonObject.get("success")
-        success?.isJsonPrimitive == true &&
-            success.asJsonPrimitive.isBoolean &&
-            success.asBoolean
-    }.getOrDefault(false)
+        if (!responseJson.isJsonObject) return@runCatching null
+        val responseObject = responseJson.asJsonObject
+        val success = responseObject.get("success")
+        val requestId = responseObject.get("request_id")
+        if (success?.isJsonPrimitive != true || !success.asJsonPrimitive.isBoolean) {
+            return@runCatching null
+        }
+        if (requestId?.isJsonPrimitive != true || !requestId.asJsonPrimitive.isString) {
+            return@runCatching null
+        }
+        Gson().fromJson(responseObject, TrainingSaveResponse::class.java)
+    }.getOrNull()?.takeIf { response ->
+        response.success == true &&
+            response.requestId != null &&
+            response.requestId == expectedRequestId
+    }
 }
+
+internal fun isSuccessfulSaveResponse(
+    responseCode: Int,
+    responseBody: String?,
+    expectedRequestId: String
+): Boolean = parseVerifiedTrainingSaveResponse(
+    responseCode,
+    responseBody,
+    expectedRequestId
+) != null
 
 internal fun resultToPublishAfterSave(
     result: ExerciseResult,
@@ -131,6 +204,7 @@ class MainViewModel : ViewModel() {
     private var userLevel: String = ""
     private var expectedExerciseCode: String? = null
     private val submissionGuard = SingleTrainingResultGuard()
+    private var pendingTrainingSave: PendingTrainingSave? = null
 
     fun setAccountInfo(accountId: Int, userLevel: String, expectedCode: String?) {
         this.accountId = accountId
@@ -160,6 +234,14 @@ class MainViewModel : ViewModel() {
         }
         if (!submissionGuard.trySubmit()) return
 
+        val pending = getOrCreatePendingTrainingSave(
+            current = pendingTrainingSave,
+            accountId = accountId,
+            exerciseCode = exerciseCode,
+            result = result
+        )
+        pendingTrainingSave = pending
+
         _saveStatus.postValue(SaveStatus.SAVING)
         viewModelScope.launch {
             val success = withContext(Dispatchers.IO) {
@@ -174,13 +256,7 @@ class MainViewModel : ViewModel() {
                         readTimeout = 8000
                     }
 
-                    val body = JSONObject().apply {
-                        put("account_id", accountId)
-                        put("exercise_code", exerciseCode)
-                        put("accuracy", result.accuracy)
-                        put("duration_seconds", result.durationSeconds)
-                        put("exp_gained", result.accuracy.toInt())
-                    }
+                    val body = buildTrainingSaveRequestBody(pending)
 
                     OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use { writer ->
                         writer.write(body.toString())
@@ -194,7 +270,11 @@ class MainViewModel : ViewModel() {
                         connection.errorStream
                     })?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
 
-                    isSuccessfulSaveResponse(responseCode, responseBody)
+                    isSuccessfulSaveResponse(
+                        responseCode,
+                        responseBody,
+                        pending.requestId
+                    )
                 } catch (e: Exception) {
                     android.util.Log.e(TAG, "上傳訓練紀錄失敗", e)
                     false
@@ -203,8 +283,12 @@ class MainViewModel : ViewModel() {
                 }
             }
 
-            android.util.Log.d(TAG, "訓練成績存檔${if (success) "成功" else "失敗"}: $result (exercise_code=$exerciseCode)")
-            resultToPublishAfterSave(result, success)?.let(_lastResult::postValue)
+            android.util.Log.d(
+                TAG,
+                "訓練成績存檔${if (success) "成功" else "失敗"}: ${pending.result} " +
+                    "(exercise_code=${pending.exerciseCode})"
+            )
+            resultToPublishAfterSave(pending.result, success)?.let(_lastResult::postValue)
             _saveStatus.postValue(if (success) SaveStatus.SUCCESS else SaveStatus.FAILED)
         }
     }
