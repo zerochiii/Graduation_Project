@@ -98,12 +98,14 @@ internal fun resultToPublishAfterSave(
     saveSucceeded: Boolean
 ): ExerciseResult? = result.takeIf { saveSucceeded }
 
+internal fun trainingSaveUrl(apiBaseUrl: String): URL =
+    URL(apiBaseUrl.trim().trimEnd('/') + "/api/save_exercise_record.php")
+
 class MainViewModel : ViewModel() {
 
     companion object {
         private const val TAG = "ExerciseData"
 
-        private const val BASE_URL = "http://192.168.0.10/xampp/Graduation_Project/"
     }
 
     private var _model = PoseLandmarkerHelper.MODEL_POSE_LANDMARKER_FULL
@@ -130,12 +132,19 @@ class MainViewModel : ViewModel() {
     private var accountId: Int = -1
     private var userLevel: String = ""
     private var expectedExerciseCode: String? = null
+    private var apiBaseUrl: String = ""
     private val submissionGuard = SingleTrainingResultGuard()
 
-    fun setAccountInfo(accountId: Int, userLevel: String, expectedCode: String?) {
+    fun setAccountInfo(
+        accountId: Int,
+        userLevel: String,
+        expectedCode: String?,
+        apiBaseUrl: String
+    ) {
         this.accountId = accountId
         this.userLevel = userLevel.trim().uppercase().take(1)
         this.expectedExerciseCode = expectedCode
+        this.apiBaseUrl = apiBaseUrl
     }
 
     private val _lastResult = MutableLiveData<ExerciseResult>()
@@ -165,7 +174,7 @@ class MainViewModel : ViewModel() {
             val success = withContext(Dispatchers.IO) {
                 var connection: HttpURLConnection? = null
                 try {
-                    val url = URL(BASE_URL + "api/save_exercise_record.php")
+                    val url = trainingSaveUrl(apiBaseUrl)
                     connection = (url.openConnection() as HttpURLConnection).apply {
                         requestMethod = "POST"
                         doOutput = true

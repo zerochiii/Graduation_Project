@@ -55,4 +55,12 @@ class TrainingResultContractTest {
         assertNull(resultToPublishAfterSave(result, saveSucceeded = false))
         assertEquals(result, resultToPublishAfterSave(result, saveSucceeded = true))
     }
+
+    @Test
+    fun trainingSaveUrl_usesConfiguredBaseUrlWithOneSeparator() {
+        assertEquals(
+            "http://127.0.0.1:8000/api/save_exercise_record.php",
+            trainingSaveUrl("http://127.0.0.1:8000//").toString()
+        )
+    }
 }

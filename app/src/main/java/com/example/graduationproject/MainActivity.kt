@@ -142,6 +142,7 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
                     intent.putExtra(CameraActivity.EXTRA_ACCOUNT_ID, globalAccountId)
                     intent.putExtra(CameraActivity.EXTRA_USER_LEVEL, grade)
                     intent.putExtra(CameraActivity.EXTRA_TRAINING_WEEK, attempt.week)
+                    intent.putExtra(CameraActivity.EXTRA_API_BASE_URL, BuildConfig.API_BASE_URL)
                     trainingLauncher.launch(intent)
                 },
                 assignmentViewModel = assignmentViewModel

@@ -45,6 +45,7 @@ class MainActivity : AppCompatActivity() {
         const val EXTRA_TRAINING_ATTEMPT_ID = "extra_training_attempt_id"
         const val EXTRA_TRAINING_COMPLETED = "extra_training_completed"
         const val EXTRA_TRAINING_WEEK = "extra_training_week"
+        const val EXTRA_API_BASE_URL = "extra_api_base_url"
 
         fun resolveTargetDestination(targetFragment: String): Int? {
             return when (targetFragment) {
@@ -91,7 +92,8 @@ class MainActivity : AppCompatActivity() {
         viewModel.setAccountInfo(
             accountId,
             userLevel,
-            intent.getStringExtra(EXTRA_EXPECTED_RESULT_CODE)
+            intent.getStringExtra(EXTRA_EXPECTED_RESULT_CODE),
+            intent.getStringExtra(EXTRA_API_BASE_URL).orEmpty()
         )
 
         val navHostFragment =

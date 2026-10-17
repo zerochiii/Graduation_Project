@@ -1,7 +1,51 @@
+import com.android.build.api.variant.BuildConfigField
+import groovy.json.JsonOutput
+import java.net.URI
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+}
+
+fun normalizeApiBaseUrl(value: String): String {
+    val normalized = value.trim().trimEnd('/') + "/"
+    val uri = runCatching { URI(normalized) }.getOrNull()
+    require(uri != null && uri.scheme?.lowercase() in setOf("http", "https")) {
+        "API_BASE_URL must use HTTP or HTTPS"
+    }
+    require(!uri.host.isNullOrBlank()) {
+        "API_BASE_URL must include a host"
+    }
+    require(uri.port == -1 || uri.port in 1..65535) {
+        "API_BASE_URL port must be between 1 and 65535"
+    }
+    require(uri.rawUserInfo == null && uri.rawQuery == null && uri.rawFragment == null) {
+        "API_BASE_URL must not contain credentials, a query, or a fragment"
+    }
+    return normalized
+}
+
+val apiBaseUrl = providers.provider {
+    val localSettings = Properties().apply {
+        val settingsFile = rootProject.file("local.properties")
+        if (settingsFile.exists()) settingsFile.inputStream().use { load(it) }
+    }
+    val configuredValue = localSettings.getProperty("API_BASE_URL")
+    require(!configuredValue.isNullOrBlank()) {
+        "Missing API_BASE_URL in root local.properties (for example, API_BASE_URL=http://127.0.0.1:8000/)"
+    }
+    normalizeApiBaseUrl(configuredValue)
+}
+
+androidComponents {
+    onVariants { variant ->
+        variant.buildConfigFields.put(
+            "API_BASE_URL",
+            apiBaseUrl.map { BuildConfigField("String", JsonOutput.toJson(it), null) }
+        )
+    }
 }
 
 android {
@@ -40,6 +84,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
