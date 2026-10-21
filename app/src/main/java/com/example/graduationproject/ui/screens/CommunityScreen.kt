@@ -29,6 +29,10 @@ import com.example.graduationproject.DataClass.FriendActionRequest
 import com.example.graduationproject.DataClass.FriendRequest
 import com.example.graduationproject.DataClass.GetPointsRequest
 import com.example.graduationproject.api.ApiClient
+import com.example.graduationproject.profile.DEFAULT_PROFILE_AVATAR_ID
+import com.example.graduationproject.profile.DEFAULT_PROFILE_AVATAR_COLOR_ID
+import com.example.graduationproject.profile.AvatarSource
+import com.example.graduationproject.ui.components.ProfileAvatar
 import com.example.graduationproject.ui.theme.GraduationProjectTheme
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -42,7 +46,13 @@ private val TextSub = Color(0xFF5D5D5D)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CommunityScreen(accountId: Int) {
+fun CommunityScreen(
+    accountId: Int,
+    currentUserAvatarId: String = DEFAULT_PROFILE_AVATAR_ID,
+    currentUserAvatarColorId: String = DEFAULT_PROFILE_AVATAR_COLOR_ID,
+    currentUserAvatarSource: AvatarSource = AvatarSource.Preset(currentUserAvatarId),
+    currentUserDisplayName: String = ""
+) {
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     val tabs = listOf("社區排行榜", "我的好友")
 
@@ -92,7 +102,7 @@ fun CommunityScreen(accountId: Int) {
         refreshData()
     }
 
-    val currentUser = leaderboardList.find { it.id == accountId.toString() }
+    val currentUserFromApi = leaderboardList.find { it.id == accountId.toString() }
         ?: CommunityUser(
             id = accountId.toString(),
             name = "專屬長輩",
@@ -102,6 +112,9 @@ fun CommunityScreen(accountId: Int) {
             weeklyExp = 0,
             weeklyExercise = 0
         )
+    val currentUser = currentUserFromApi.copy(
+        name = currentUserDisplayName.ifBlank { currentUserFromApi.name }
+    )
 
     val dateRangeStr = remember {
         val calendar = Calendar.getInstance()
@@ -127,7 +140,15 @@ fun CommunityScreen(accountId: Int) {
         }
 
         if (selectedTabIndex == 0) {
-            LeaderboardTab(currentUser, dateRangeStr, leaderboardList, sendAction)
+            LeaderboardTab(
+                currentUser = currentUser,
+                currentUserAvatarId = currentUserAvatarId,
+                currentUserAvatarColorId = currentUserAvatarColorId,
+                currentUserAvatarSource = currentUserAvatarSource,
+                dateRangeStr = dateRangeStr,
+                leaderboardList = leaderboardList,
+                onAction = sendAction
+            )
         } else {
             FriendsTab(friendList, pendingRequests, sendAction)
         }
@@ -137,6 +158,9 @@ fun CommunityScreen(accountId: Int) {
 @Composable
 fun LeaderboardTab(
     currentUser: CommunityUser,
+    currentUserAvatarId: String,
+    currentUserAvatarColorId: String,
+    currentUserAvatarSource: AvatarSource,
     dateRangeStr: String,
     leaderboardList: List<CommunityUser>,
     onAction: (String, Int?, String?) -> Unit
@@ -150,14 +174,40 @@ fun LeaderboardTab(
             Text(text = "排行榜將於週日 23:59 結算", fontSize = 12.sp, color = TextSub.copy(alpha = 0.7f))
         }
 
-        MyRankHeader(user = currentUser)
+        MyRankHeader(
+            user = currentUser,
+            avatarId = currentUserAvatarId,
+            avatarColorId = currentUserAvatarColorId,
+            avatarSource = currentUserAvatarSource
+        )
 
         LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp), contentPadding = PaddingValues(top = 8.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             items(items = leaderboardList, key = { it.id }) { user ->
+                val displayedUser = if (user.id == currentUser.id) {
+                    user.copy(name = currentUser.name)
+                } else {
+                    user
+                }
                 CommunityUserCard(
-                    user = user, isMe = user.id == currentUser.id,
-                    onAddFriend = { onAction("send", user.id.toInt(), null) },
-                    onDeleteFriend = { onAction("delete", user.id.toInt(), null) }
+                    user = displayedUser,
+                    isMe = displayedUser.id == currentUser.id,
+                    avatarId = avatarIdForCommunityUser(
+                        currentAccountId = currentUser.id,
+                        displayedUserId = displayedUser.id,
+                        currentUserAvatarId = currentUserAvatarId
+                    ),
+                    avatarColorId = avatarColorIdForCommunityUser(
+                        currentAccountId = currentUser.id,
+                        displayedUserId = displayedUser.id,
+                        currentUserAvatarColorId = currentUserAvatarColorId
+                    ),
+                    avatarSource = avatarSourceForCommunityUser(
+                        currentAccountId = currentUser.id,
+                        displayedUserId = displayedUser.id,
+                        currentUserAvatarSource = currentUserAvatarSource
+                    ),
+                    onAddFriend = { onAction("send", displayedUser.id.toInt(), null) },
+                    onDeleteFriend = { onAction("delete", displayedUser.id.toInt(), null) }
                 )
             }
         }
@@ -334,7 +384,12 @@ fun FriendRequestCard(
 }
 
 @Composable
-fun MyRankHeader(user: CommunityUser) {
+fun MyRankHeader(
+    user: CommunityUser,
+    avatarId: String,
+    avatarColorId: String,
+    avatarSource: AvatarSource = AvatarSource.Preset(avatarId)
+) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -345,35 +400,40 @@ fun MyRankHeader(user: CommunityUser) {
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "第 ${user.rank} 名",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = SecondaryTeal
+                ProfileAvatar(
+                    avatarSource = avatarSource,
+                    avatarColorId = avatarColorId,
+                    size = 56.dp,
+                    contentDescription = "${user.name}的社群頭像"
                 )
-
-                Spacer(modifier = Modifier.width(16.dp))
-
+                Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "本週累積表现",
-                        fontSize = 14.sp,
-                        color = TextSub
-                    )
                     Text(
                         text = user.name,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextMain
                     )
+                    Text(
+                        text = "本週累積表現",
+                        fontSize = 14.sp,
+                        color = TextSub
+                    )
                 }
-
-                Text(
-                    text = "${user.weeklyExp} 經驗值",
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Black,
-                    color = SecondaryTeal
-                )
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = "第 ${user.rank} 名",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = SecondaryTeal
+                    )
+                    Text(
+                        text = "${user.weeklyExp} 經驗值",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Black,
+                        color = SecondaryTeal
+                    )
+                }
             }
         }
     }
@@ -383,6 +443,9 @@ fun MyRankHeader(user: CommunityUser) {
 fun CommunityUserCard(
     user: CommunityUser,
     isMe: Boolean,
+    avatarId: String? = null,
+    avatarColorId: String? = null,
+    avatarSource: AvatarSource? = null,
     onAddFriend: () -> Unit,
     onDeleteFriend: () -> Unit
 ) {
@@ -438,19 +501,28 @@ fun CommunityUserCard(
                 modifier = Modifier.width(36.dp)
             )
 
-            Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .clip(CircleShape)
-                    .background(user.avatarColor),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Person,
-                    contentDescription = null,
-                    modifier = Modifier.size(36.dp),
-                    tint = Color.White
+            if (avatarId != null || avatarSource != null) {
+                ProfileAvatar(
+                    avatarSource = avatarSource ?: AvatarSource.Preset(avatarId!!),
+                    avatarColorId = avatarColorId ?: DEFAULT_PROFILE_AVATAR_COLOR_ID,
+                    size = 56.dp,
+                    contentDescription = "${user.name}的社群頭像"
                 )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(CircleShape)
+                        .background(user.avatarColor),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Person,
+                        contentDescription = null,
+                        modifier = Modifier.size(36.dp),
+                        tint = Color.White
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.width(12.dp))
@@ -548,6 +620,24 @@ fun CommunityUserCard(
         }
     }
 }
+
+internal fun avatarIdForCommunityUser(
+    currentAccountId: String,
+    displayedUserId: String,
+    currentUserAvatarId: String
+): String? = currentUserAvatarId.takeIf { currentAccountId == displayedUserId }
+
+internal fun avatarColorIdForCommunityUser(
+    currentAccountId: String,
+    displayedUserId: String,
+    currentUserAvatarColorId: String
+): String? = currentUserAvatarColorId.takeIf { currentAccountId == displayedUserId }
+
+internal fun avatarSourceForCommunityUser(
+    currentAccountId: String,
+    displayedUserId: String,
+    currentUserAvatarSource: AvatarSource
+): AvatarSource? = currentUserAvatarSource.takeIf { currentAccountId == displayedUserId }
 
 @Composable
 fun AchievementDialog(

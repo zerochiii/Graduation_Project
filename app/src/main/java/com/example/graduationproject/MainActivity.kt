@@ -12,19 +12,32 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.graduationproject.DataClass.SaveAssessmentRequest
 import com.example.graduationproject.api.ApiClient
+import com.example.graduationproject.profile.AppPrivateProfileAvatarFileManager
+import com.example.graduationproject.profile.ProfileCustomizationViewModel
+import com.example.graduationproject.profile.ProfileCustomizationViewModelFactory
+import com.example.graduationproject.profile.SharedPreferencesProfileSettingsStore
+import com.example.graduationproject.ui.screens.AccountInfoScreen
+import com.example.graduationproject.ui.screens.AvatarPickerScreen
+import com.example.graduationproject.ui.screens.CommunityVisibilitySettingsScreen
+import com.example.graduationproject.ui.screens.DisplayNameSettingsScreen
 import com.example.graduationproject.ui.screens.ElderlyDashboard
 import com.example.graduationproject.ui.screens.AssignmentViewModel
 import com.example.graduationproject.ui.screens.ForgotPasswordScreen
 import com.example.graduationproject.ui.screens.LoginScreen
+import com.example.graduationproject.ui.screens.LogoutScreen
+import com.example.graduationproject.ui.screens.ProfileSummaryData
+import com.example.graduationproject.ui.screens.ProfileSummaryScreen
 import com.example.graduationproject.ui.screens.RegisterScreen
 import com.example.graduationproject.ui.screens.SettingsScreen
 import com.example.graduationproject.ui.screens.SurveyScreen
+import com.example.graduationproject.ui.screens.SwitchAccountScreen
 import com.example.graduationproject.ui.theme.GraduationProjectTheme
 import com.example.graduationproject.ui.theme.LocalFontScale
 import kotlinx.coroutines.launch
@@ -58,11 +71,42 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
     val savedAccountId = sharedPreferences.getInt("ACCOUNT_ID", -1)
     var globalAccountId by remember { mutableIntStateOf(savedAccountId) }
     val assignmentViewModel: AssignmentViewModel = viewModel()
+    val avatarFiles = remember(context) {
+        AppPrivateProfileAvatarFileManager(context.filesDir, context.cacheDir)
+    }
+    val profileViewModelFactory: ViewModelProvider.Factory = remember(sharedPreferences, avatarFiles) {
+        ProfileCustomizationViewModelFactory(
+            SharedPreferencesProfileSettingsStore(sharedPreferences),
+            avatarFiles
+        )
+    }
+    val profileCustomizationViewModel: ProfileCustomizationViewModel = viewModel(
+        factory = profileViewModelFactory
+    )
+    val profileCustomizationState = profileCustomizationViewModel.uiState
+    var dashboardName by remember(globalAccountId) { mutableStateOf<String?>(null) }
+    var dashboardLevel by remember(globalAccountId) { mutableStateOf<Int?>(null) }
+    var dashboardWeek by remember(globalAccountId) { mutableStateOf<Int?>(null) }
+    var dashboardPoints by remember(globalAccountId) { mutableStateOf<Int?>(null) }
+    var dashboardLoaded by remember(globalAccountId) { mutableStateOf(false) }
+    var dashboardLoadFailed by remember(globalAccountId) { mutableStateOf(false) }
+
+    val logoutToLogin: () -> Unit = {
+        userViewModel.reset()
+        assignmentViewModel.resetForAccountChange()
+        profileCustomizationViewModel.reset()
+        sharedPreferences.edit().remove("ACCOUNT_ID").apply()
+        globalAccountId = -1
+        navController.navigate("login") {
+            popUpTo("home") { inclusive = true }
+        }
+    }
 
     LaunchedEffect(globalAccountId) {
         if (userViewModel.bindAccount(globalAccountId)) {
             assignmentViewModel.resetForAccountChange()
         }
+        profileCustomizationViewModel.bindAccount(globalAccountId)
     }
 
     val trainingLauncher = rememberLauncherForActivityResult(
@@ -145,7 +189,24 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
                     intent.putExtra(CameraActivity.EXTRA_API_BASE_URL, BuildConfig.API_BASE_URL)
                     trainingLauncher.launch(intent)
                 },
-                assignmentViewModel = assignmentViewModel
+                assignmentViewModel = assignmentViewModel,
+                currentUserAvatarId = profileCustomizationState.avatarId,
+                currentUserAvatarColorId = profileCustomizationState.avatarColorId,
+                currentUserAvatarSource = profileCustomizationState.avatarSource,
+                currentUserDisplayName = profileCustomizationState.displayName,
+                onDashboardDataLoaded = { name, level, week, points ->
+                    dashboardName = name
+                    dashboardLevel = level
+                    dashboardWeek = week
+                    dashboardPoints = points
+                    dashboardLoaded = true
+                    dashboardLoadFailed = false
+                    profileCustomizationViewModel.updateAccountName(globalAccountId, name)
+                },
+                onDashboardDataLoadFailed = {
+                    dashboardLoaded = false
+                    dashboardLoadFailed = true
+                }
             )
         }
 
@@ -190,18 +251,114 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
 
         composable("settings") {
             SettingsScreen(
+                accountId = globalAccountId,
+                avatarId = profileCustomizationState.avatarId,
+                avatarColorId = profileCustomizationState.avatarColorId,
+                avatarSource = profileCustomizationState.avatarSource,
+                displayName = profileCustomizationState.displayName.ifBlank {
+                    dashboardName.orEmpty()
+                },
+                onNavigateToAvatarPicker = { navController.navigate("avatar_picker") },
+                onNavigateToDisplayName = { navController.navigate("display_name_settings") },
+                onNavigateToCommunityVisibility = { navController.navigate("community_visibility_settings") },
+                onNavigateToProfileSummary = { navController.navigate("profile_summary") },
+                onNavigateToSwitchAccount = { navController.navigate("switch_account") },
+                onNavigateToAccountInfo = { navController.navigate("account_info") },
+                onNavigateToLogout = { navController.navigate("logout") },
                 onNavigateBack = { navController.popBackStack() },
-                onLogout = {
-                    userViewModel.reset()
-                    assignmentViewModel.resetForAccountChange()
-                    sharedPreferences.edit().remove("ACCOUNT_ID").apply()
-                    globalAccountId = -1
-                    navController.navigate("login") {
-                        popUpTo("home") { inclusive = true }
-                    }
-                }
             )
         }
+
+        composable("avatar_picker") {
+            AvatarPickerScreen(
+                accountId = globalAccountId,
+                currentAvatarSource = profileCustomizationState.avatarSource,
+                currentAvatarColorId = profileCustomizationState.avatarColorId,
+                avatarFiles = avatarFiles,
+                errorMessage = profileCustomizationState.errorMessage,
+                onSave = { avatarSource, colorId ->
+                    profileCustomizationViewModel.saveAvatar(globalAccountId, avatarSource, colorId)
+                },
+                onClearError = profileCustomizationViewModel::clearError,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable("display_name_settings") {
+            DisplayNameSettingsScreen(
+                accountId = globalAccountId,
+                avatarId = profileCustomizationState.avatarId,
+                avatarColorId = profileCustomizationState.avatarColorId,
+                avatarSource = profileCustomizationState.avatarSource,
+                currentDisplayName = profileCustomizationState.displayName.ifBlank {
+                    dashboardName.orEmpty()
+                },
+                errorMessage = profileCustomizationState.errorMessage,
+                onSave = { name -> profileCustomizationViewModel.saveDisplayName(globalAccountId, name) },
+                onClearError = profileCustomizationViewModel::clearError,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable("community_visibility_settings") {
+            CommunityVisibilitySettingsScreen(onNavigateBack = { navController.popBackStack() })
+        }
+
+        composable("profile_summary") {
+            ProfileSummaryScreen(
+                data = ProfileSummaryData(
+                    displayName = profileCustomizationState.displayName.ifBlank { dashboardName.orEmpty() },
+                    avatarId = profileCustomizationState.avatarId,
+                    avatarColorId = profileCustomizationState.avatarColorId,
+                    avatarSource = profileCustomizationState.avatarSource,
+                    level = dashboardLevel,
+                    currentWeek = dashboardWeek,
+                    points = dashboardPoints,
+                    fitnessStatus = assessmentStatusText(userViewModel.assessmentState),
+                    isLoading = !dashboardLoaded && !dashboardLoadFailed,
+                    loadError = dashboardLoadFailed
+                ),
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable("switch_account") {
+            SwitchAccountScreen(
+                displayName = profileCustomizationState.displayName.ifBlank { dashboardName.orEmpty() },
+                avatarId = profileCustomizationState.avatarId,
+                avatarColorId = profileCustomizationState.avatarColorId,
+                avatarSource = profileCustomizationState.avatarSource,
+                onLoginAnotherAccount = logoutToLogin,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable("account_info") {
+            AccountInfoScreen(
+                displayName = profileCustomizationState.displayName.ifBlank { dashboardName.orEmpty() },
+                appVersion = BuildConfig.VERSION_NAME,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable("logout") {
+            LogoutScreen(
+                onConfirmLogout = logoutToLogin,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+    }
+}
+
+private fun assessmentStatusText(state: AssessmentState): String? = when (state) {
+    AssessmentState.Loading -> null
+    AssessmentState.NotAssessed -> "尚未評估"
+    is AssessmentState.Inconsistent, is AssessmentState.Error -> "資料異常"
+    is AssessmentState.Assessed -> when (state.sppbScore) {
+        in 0..3 -> "照護輔助"
+        in 4..6 -> "循序恢復"
+        in 7..9 -> "穩定提升"
+        else -> "良好維持"
     }
 }
 private const val CAMERA_FRAGMENT_CAMERA = "camera_fragment"

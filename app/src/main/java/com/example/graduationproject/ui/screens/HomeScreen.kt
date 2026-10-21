@@ -38,6 +38,9 @@ import com.example.graduationproject.UserViewModel
 import com.example.graduationproject.api.ApiClient
 import com.example.graduationproject.fitness.FitnessCategory
 import com.example.graduationproject.ui.components.ScaleButton
+import com.example.graduationproject.profile.DEFAULT_PROFILE_AVATAR_ID
+import com.example.graduationproject.profile.DEFAULT_PROFILE_AVATAR_COLOR_ID
+import com.example.graduationproject.profile.AvatarSource
 import com.example.graduationproject.ui.theme.GraduationProjectTheme
 import com.example.graduationproject.ui.theme.LocalFontScale
 import com.example.graduationproject.ui.theme.scaledSp
@@ -131,7 +134,13 @@ fun ElderlyDashboard(
     onNavigateToSettings: () -> Unit = {},
     onNavigateToSurvey: () -> Unit = {},
     onStartTraining: (String?) -> Unit = {},
-    assignmentViewModel: AssignmentViewModel = viewModel()
+    assignmentViewModel: AssignmentViewModel = viewModel(),
+    currentUserAvatarId: String = DEFAULT_PROFILE_AVATAR_ID,
+    currentUserAvatarColorId: String = DEFAULT_PROFILE_AVATAR_COLOR_ID,
+    currentUserAvatarSource: AvatarSource = AvatarSource.Preset(currentUserAvatarId),
+    currentUserDisplayName: String = "",
+    onDashboardDataLoaded: (String, Int, Int, Int) -> Unit = { _, _, _, _ -> },
+    onDashboardDataLoadFailed: () -> Unit = {}
 ) {
     var elderName by remember { mutableStateOf("長輩") }
     var elderLevel by remember { mutableIntStateOf(1) }
@@ -156,7 +165,7 @@ fun ElderlyDashboard(
     // 依據評估狀態初始化通知內容
     LaunchedEffect(assessmentState) {
         val now = System.currentTimeMillis()
-        notifications = when (assessmentState) {
+        val generated = when (assessmentState) {
             AssessmentState.Loading -> emptyList()
             AssessmentState.NotAssessed -> listOf(
                 HomeNotification(
@@ -197,6 +206,7 @@ fun ElderlyDashboard(
                 )
             )
         }
+        notifications = generated
     }
 
     LaunchedEffect(accountId, selectedItem) {
@@ -213,16 +223,19 @@ fun ElderlyDashboard(
                 currentPoints = data.points
                 streakDays = data.streakDays
                 currentWeek = data.currentWeek
+                onDashboardDataLoaded(data.name, data.level, data.currentWeek, data.points)
                 userViewModel.updateAssessmentFromDashboard(
                     accountId = accountId,
                     grade = data.grade,
                     sppbScore = data.sppbScore
                 )
             } else {
+                onDashboardDataLoadFailed()
                 userViewModel.reportAssessmentLoadError(accountId, "無法取得首頁評估資料")
             }
         } catch (e: Exception) {
             e.printStackTrace()
+            onDashboardDataLoadFailed()
             userViewModel.reportAssessmentLoadError(accountId, "無法取得首頁評估資料")
         }
     }
@@ -379,7 +392,13 @@ fun ElderlyDashboard(
                         onStartTraining = onStartTraining,
                         viewModel = assignmentViewModel
                     )
-                    2 -> CommunityScreen(accountId = accountId)
+                    2 -> CommunityScreen(
+                        accountId = accountId,
+                        currentUserAvatarId = currentUserAvatarId,
+                        currentUserAvatarColorId = currentUserAvatarColorId,
+                        currentUserAvatarSource = currentUserAvatarSource,
+                        currentUserDisplayName = currentUserDisplayName
+                    )
                     3 -> RewardScreen(accountId = accountId, currentPoints = currentPoints, onPointsUpdated = { currentPoints = it })
                 }
             }
