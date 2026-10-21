@@ -67,15 +67,71 @@ internal val SettingsSectionSpacing = 16.dp
 internal val SettingsIconContainerSize = 48.dp
 internal val SettingsPrimaryCtaHeight = 64.dp
 
-internal class SingleBackNavigationGuard {
-    private var navigationStarted = false
+internal class SettingsBackNavigationCoordinator(
+    private val settingsRoutes: Set<String> = DEFAULT_SETTINGS_ROUTES
+) {
+    private var currentDestination: String? = null
+    private var destinationSettled = false
+    private var navigationConsumed = false
 
-    fun tryNavigate(action: () -> Unit): Boolean {
-        if (navigationStarted) return false
-        navigationStarted = true
+    fun onDestinationChanged(destination: String?) {
+        if (destination == currentDestination) return
+        currentDestination = destination
+        destinationSettled = false
+        navigationConsumed = false
+    }
+
+    fun onDestinationSettled(destination: String?) {
+        if (destination == currentDestination && destination in settingsRoutes) {
+            destinationSettled = true
+        }
+    }
+
+    fun onDestinationLeaving(destination: String?) {
+        if (destination == currentDestination) {
+            destinationSettled = false
+        }
+    }
+
+    fun tryNavigate(destination: String?, action: () -> Unit): Boolean {
+        if (
+            destination !in settingsRoutes ||
+            destination != currentDestination ||
+            !destinationSettled ||
+            navigationConsumed
+        ) {
+            return false
+        }
+        navigationConsumed = true
+        destinationSettled = false
         action()
         return true
     }
+
+    private companion object {
+        val DEFAULT_SETTINGS_ROUTES = setOf(
+            "settings",
+            "avatar_picker",
+            "display_name_settings",
+            "community_visibility_settings",
+            "profile_summary",
+            "switch_account",
+            "account_info",
+            "logout"
+        )
+    }
+}
+
+internal fun dispatchSettingsBackRequest(
+    backNavigationEnabled: Boolean,
+    onNavigateBack: () -> Unit,
+    onBackBlocked: () -> Unit
+): Boolean = if (backNavigationEnabled) {
+    onNavigateBack()
+    true
+} else {
+    onBackBlocked()
+    false
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -197,14 +253,12 @@ internal fun SettingsScaffold(
     bottomBar: @Composable () -> Unit = {},
     content: @Composable (PaddingValues) -> Unit
 ) {
-    val backNavigationGuard = remember { SingleBackNavigationGuard() }
     val requestBack = {
-        if (backNavigationEnabled) {
-            backNavigationGuard.tryNavigate(onNavigateBack)
-        } else {
-            onBackBlocked()
-            false
-        }
+        dispatchSettingsBackRequest(
+            backNavigationEnabled = backNavigationEnabled,
+            onNavigateBack = onNavigateBack,
+            onBackBlocked = onBackBlocked
+        )
     }
 
     BackHandler { requestBack() }

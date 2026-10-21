@@ -13,9 +13,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.graduationproject.DataClass.SaveAssessmentRequest
 import com.example.graduationproject.api.ApiClient
@@ -36,6 +39,7 @@ import com.example.graduationproject.ui.screens.ProfileSummaryData
 import com.example.graduationproject.ui.screens.ProfileSummaryScreen
 import com.example.graduationproject.ui.screens.RegisterScreen
 import com.example.graduationproject.ui.screens.SettingsScreen
+import com.example.graduationproject.ui.screens.SettingsBackNavigationCoordinator
 import com.example.graduationproject.ui.screens.SurveyScreen
 import com.example.graduationproject.ui.screens.SwitchAccountScreen
 import com.example.graduationproject.ui.theme.GraduationProjectTheme
@@ -62,7 +66,46 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
     val navController = rememberNavController()
+    val currentBackStackEntry by navController.currentBackStackEntryAsState()
+    val settingsBackNavigationCoordinator = remember { SettingsBackNavigationCoordinator() }
     val context = LocalContext.current
+
+    DisposableEffect(currentBackStackEntry) {
+        val entry = currentBackStackEntry
+        val destination = entry?.destination?.route
+        settingsBackNavigationCoordinator.onDestinationChanged(destination)
+
+        if (entry == null) {
+            onDispose { }
+        } else {
+            val observer = LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_RESUME -> {
+                        settingsBackNavigationCoordinator.onDestinationSettled(destination)
+                    }
+                    Lifecycle.Event.ON_PAUSE,
+                    Lifecycle.Event.ON_STOP,
+                    Lifecycle.Event.ON_DESTROY -> {
+                        settingsBackNavigationCoordinator.onDestinationLeaving(destination)
+                    }
+                    else -> Unit
+                }
+            }
+            entry.lifecycle.addObserver(observer)
+            if (entry.lifecycle.currentState == Lifecycle.State.RESUMED) {
+                settingsBackNavigationCoordinator.onDestinationSettled(destination)
+            }
+            onDispose { entry.lifecycle.removeObserver(observer) }
+        }
+    }
+
+    val navigateBackFromSettings: () -> Unit = {
+        val destination = navController.currentBackStackEntry?.destination?.route
+        settingsBackNavigationCoordinator.tryNavigate(destination) {
+            navController.popBackStack()
+        }
+        Unit
+    }
 
     val sharedPreferences = remember {
         context.getSharedPreferences("ElderCarePrefs", Context.MODE_PRIVATE)
@@ -265,7 +308,7 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
                 onNavigateToSwitchAccount = { navController.navigate("switch_account") },
                 onNavigateToAccountInfo = { navController.navigate("account_info") },
                 onNavigateToLogout = { navController.navigate("logout") },
-                onNavigateBack = { navController.popBackStack() },
+                onNavigateBack = navigateBackFromSettings,
             )
         }
 
@@ -280,7 +323,7 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
                     profileCustomizationViewModel.saveAvatar(globalAccountId, avatarSource, colorId)
                 },
                 onClearError = profileCustomizationViewModel::clearError,
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = navigateBackFromSettings
             )
         }
 
@@ -296,12 +339,12 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
                 errorMessage = profileCustomizationState.errorMessage,
                 onSave = { name -> profileCustomizationViewModel.saveDisplayName(globalAccountId, name) },
                 onClearError = profileCustomizationViewModel::clearError,
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = navigateBackFromSettings
             )
         }
 
         composable("community_visibility_settings") {
-            CommunityVisibilitySettingsScreen(onNavigateBack = { navController.popBackStack() })
+            CommunityVisibilitySettingsScreen(onNavigateBack = navigateBackFromSettings)
         }
 
         composable("profile_summary") {
@@ -318,7 +361,7 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
                     isLoading = !dashboardLoaded && !dashboardLoadFailed,
                     loadError = dashboardLoadFailed
                 ),
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = navigateBackFromSettings
             )
         }
 
@@ -329,7 +372,7 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
                 avatarColorId = profileCustomizationState.avatarColorId,
                 avatarSource = profileCustomizationState.avatarSource,
                 onLoginAnotherAccount = logoutToLogin,
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = navigateBackFromSettings
             )
         }
 
@@ -337,14 +380,14 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
             AccountInfoScreen(
                 displayName = profileCustomizationState.displayName.ifBlank { dashboardName.orEmpty() },
                 appVersion = BuildConfig.VERSION_NAME,
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = navigateBackFromSettings
             )
         }
 
         composable("logout") {
             LogoutScreen(
                 onConfirmLogout = logoutToLogin,
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = navigateBackFromSettings
             )
         }
     }
