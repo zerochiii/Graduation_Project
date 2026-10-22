@@ -108,7 +108,7 @@ fun AssignmentScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "🎉 評估完成！級別為 $userLevel，已派發專屬任務。",
+                            text = "評估完成！級別為 $userLevel，已派發專屬任務。",
                             fontSize = 18.scaledSp(),
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.weight(1f)

@@ -1,26 +1,13 @@
-/*
- * Copyright 2023 The TensorFlow Authors. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *       http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package com.google.mediapipe.examples.poselandmarker
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
-import androidx.appcompat.app.AppCompatActivity
+import android.content.pm.ApplicationInfo
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.viewModels
+import androidx.appcompat.app.AppCompatActivity
 import androidx.navigation.fragment.FragmentNavigator
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.setupWithNavController
@@ -30,14 +17,15 @@ import com.google.mediapipe.examples.poselandmarker.fragment.WalkingBWeek7Fragme
 import com.google.mediapipe.examples.poselandmarker.fragment.WalkingCWeek7Fragment
 import com.google.mediapipe.examples.poselandmarker.fragment.WalkingDWeek7Fragment
 
-internal fun resultContainsExpectedCode(resultCodes: String, expectedCode: String?): Boolean =
-    expectedCode != null && resultCodes.split(",").map(String::trim).contains(expectedCode)
+internal fun resultContainsExpectedCode(
+    resultCodes: String,
+    expectedCode: String?
+): Boolean = expectedCode != null &&
+        resultCodes.split(",").map(String::trim).contains(expectedCode)
 
 class MainActivity : AppCompatActivity() {
-
     companion object {
         const val EXTRA_TARGET_FRAGMENT = "extra_target_fragment"
-
         const val EXTRA_ACCOUNT_ID = "extra_account_id"
         const val EXTRA_USER_LEVEL = "extra_user_level"
         const val EXTRA_REQUESTED_EXERCISE_ID = "extra_requested_exercise_id"
@@ -79,16 +67,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
     private lateinit var activityMainBinding: ActivityMainBinding
-    private val viewModel : MainViewModel by viewModels()
-
+    private val viewModel: MainViewModel by viewModels()
+    private var quickCompletionRequested = false
+    private val isDebugBuild: Boolean
+        get() = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         activityMainBinding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(activityMainBinding.root)
 
         val accountId = intent.getIntExtra(EXTRA_ACCOUNT_ID, -1)
-        val userLevel = intent.getStringExtra(EXTRA_USER_LEVEL) ?: ""
-        setResult(Activity.RESULT_CANCELED, createTrainingResultIntent(completed = false))
+        val userLevel = intent.getStringExtra(EXTRA_USER_LEVEL).orEmpty()
+        setResult(Activity.RESULT_CANCELED, createTrainingResultIntent(false))
         viewModel.setAccountInfo(
             accountId,
             userLevel,
@@ -100,9 +90,8 @@ class MainActivity : AppCompatActivity() {
             supportFragmentManager.findFragmentById(R.id.fragment_container) as NavHostFragment
         val navController = navHostFragment.navController
         val targetFragment = intent.getStringExtra(EXTRA_TARGET_FRAGMENT)
-
-        // new
-        val startDestination = targetFragment?.let(::resolveTargetDestination)
+        val startDestination = targetFragment
+            ?.let(::resolveTargetDestination)
             ?.takeIf { PermissionsFragment.hasPermissions(this) }
             ?: R.id.permissions_fragment
 
@@ -120,32 +109,95 @@ class MainActivity : AppCompatActivity() {
         }
         navGraph.setStartDestination(startDestination)
         navController.graph = navGraph
-
         activityMainBinding.navigation.setupWithNavController(navController)
-        activityMainBinding.navigation.setOnNavigationItemReselectedListener {
-            // ignore the reselection
-        }
+        activityMainBinding.navigation.setOnNavigationItemReselectedListener {}
+
         viewModel.lastResult.observe(this) { result ->
-            val expectedResultCode = intent.getStringExtra(EXTRA_EXPECTED_RESULT_CODE)
-            if (resultContainsExpectedCode(result.exerciseId, expectedResultCode)) {
-                setResult(Activity.RESULT_OK, createTrainingResultIntent(completed = true))
+            val expectedCode = intent.getStringExtra(EXTRA_EXPECTED_RESULT_CODE)
+            if (resultContainsExpectedCode(result.exerciseId, expectedCode)) {
+                setResult(
+                    Activity.RESULT_OK,
+                    createTrainingResultIntent(completed = true)
+                )
+                Toast.makeText(
+                    this,
+                    "運動完成：${result.exerciseName}\n準確度：${String.format("%.1f", result.accuracy)}%",
+                    Toast.LENGTH_LONG
+                ).show()
+                if (quickCompletionRequested) {
+                    finish()
+                }
             }
-            android.widget.Toast.makeText(
-                this,
-                "運動完成：${result.exerciseName}\n準確度：${String.format("%.1f", result.accuracy)}%",
-                android.widget.Toast.LENGTH_LONG
-            ).show()
         }
 
         viewModel.saveStatus.observe(this) { status ->
             if (status == SaveStatus.FAILED) {
-                android.widget.Toast.makeText(
-                    this,
-                    "訓練成績同步失敗，請確認網路連線",
-                    android.widget.Toast.LENGTH_SHORT
-                ).show()
+                if (quickCompletionRequested && !isFinishing) {
+                    showRetryDialog()
+                } else {
+                    Toast.makeText(
+                        this,
+                        "訓練成績同步失敗，請確認網路連線",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
             }
         }
+
+        if (isDebugBuild && accountId > 0 &&
+            !intent.getStringExtra(EXTRA_EXPECTED_RESULT_CODE).isNullOrBlank()
+        ) {
+            showDebugTrainingDialog()
+        }
+    }
+    private fun showDebugTrainingDialog() {
+        val code = intent.getStringExtra(EXTRA_EXPECTED_RESULT_CODE).orEmpty()
+        AlertDialog.Builder(this)
+            .setTitle("訓練測試模式")
+            .setMessage("目前運動：$code\n可直接模擬 95 分、60 秒的訓練結果。\n成績將寫入真正的資料庫。")
+            .setPositiveButton("快速完成訓練") { _, _ ->
+                quickCompletionRequested = true
+                val exerciseId = intent
+                    .getStringExtra(EXTRA_REQUESTED_EXERCISE_ID)
+                    .orEmpty()
+                viewModel.postResult(
+                    ExerciseResult(
+                        exerciseName = "測試訓練 $exerciseId",
+                        exerciseId = code,
+                        accuracy = 95f,
+                        durationSeconds = 60
+                    )
+                )
+            }
+            .setNegativeButton("正常姿態辨識", null)
+            .show()
+    }
+
+    private fun showRetryDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("訓練成績同步失敗")
+            .setMessage("伺服器尚未確認訓練紀錄已儲存。可以使用同一筆訓練資料重新送出。")
+            .setPositiveButton("重新儲存") { _, _ ->
+                if (!viewModel.retryPendingResult()) {
+                    val code = intent.getStringExtra(EXTRA_EXPECTED_RESULT_CODE).orEmpty()
+                    val exerciseId = intent
+                        .getStringExtra(EXTRA_REQUESTED_EXERCISE_ID)
+                        .orEmpty()
+                    viewModel.postResult(
+                        ExerciseResult(
+                            exerciseName = "測試訓練 $exerciseId",
+                            exerciseId = code,
+                            accuracy = 95f,
+                            durationSeconds = 60
+                        )
+                    )
+                }
+            }
+            .setNegativeButton("返回正常訓練") { _, _ ->
+                quickCompletionRequested = false
+            }
+            .setCancelable(false)
+            .show()
     }
 
     override fun onBackPressed() {
@@ -153,8 +205,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun createTrainingResultIntent(completed: Boolean) = Intent().apply {
-        putExtra(EXTRA_REQUESTED_EXERCISE_ID, intent.getStringExtra(EXTRA_REQUESTED_EXERCISE_ID))
-        putExtra(EXTRA_TRAINING_ATTEMPT_ID, intent.getLongExtra(EXTRA_TRAINING_ATTEMPT_ID, -1L))
+        putExtra(
+            EXTRA_REQUESTED_EXERCISE_ID,
+            intent.getStringExtra(EXTRA_REQUESTED_EXERCISE_ID)
+        )
+        putExtra(
+            EXTRA_TRAINING_ATTEMPT_ID,
+            intent.getLongExtra(EXTRA_TRAINING_ATTEMPT_ID, -1L)
+        )
         putExtra(EXTRA_TRAINING_COMPLETED, completed)
     }
 }

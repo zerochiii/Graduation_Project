@@ -42,8 +42,15 @@ private val TextSub = Color(0xFF5D5D5D)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CommunityScreen(accountId: Int) {
+fun CommunityScreen(
+    accountId: Int,
+    openChatFriendId: Int? = null,
+    onChatOpened: () -> Unit = {}
+){
     var selectedTabIndex by remember { mutableIntStateOf(0) }
+    var selectedChatFriend by remember(accountId) {
+        mutableStateOf<CommunityUser?>(null)
+    }
     val tabs = listOf("社區排行榜", "我的好友")
 
     val leaderboardList = remember { mutableStateListOf<CommunityUser>() }
@@ -91,6 +98,18 @@ fun CommunityScreen(accountId: Int) {
     LaunchedEffect(accountId, selectedTabIndex) {
         refreshData()
     }
+    LaunchedEffect(openChatFriendId, friendList.toList()) {
+        if (openChatFriendId != null) {
+            val friend = friendList.firstOrNull {
+                it.id.toIntOrNull() == openChatFriendId
+            }
+            if (friend != null) {
+                selectedTabIndex = 1
+                selectedChatFriend = friend
+                onChatOpened()
+            }
+        }
+    }
 
     val currentUser = leaderboardList.find { it.id == accountId.toString() }
         ?: CommunityUser(
@@ -113,6 +132,15 @@ fun CommunityScreen(accountId: Int) {
         "$startMonth/$startDay - ${calendar.get(Calendar.MONTH) + 1}/${calendar.get(Calendar.DAY_OF_MONTH)}"
     }
 
+    selectedChatFriend?.let { friend ->
+        ChatScreen(
+            accountId = accountId,
+            friend = friend,
+            onBack = { selectedChatFriend = null }
+        )
+        return
+    }
+
     Column(modifier = Modifier.fillMaxSize().background(BeigeBg)) {
         PrimaryTabRow(
             selectedTabIndex = selectedTabIndex, containerColor = BeigeBg, contentColor = PrimaryPeach, modifier = Modifier.height(72.dp),
@@ -129,7 +157,14 @@ fun CommunityScreen(accountId: Int) {
         if (selectedTabIndex == 0) {
             LeaderboardTab(currentUser, dateRangeStr, leaderboardList, sendAction)
         } else {
-            FriendsTab(friendList, pendingRequests, sendAction)
+            FriendsTab(
+                friendList = friendList,
+                pendingRequests = pendingRequests,
+                onAction = sendAction,
+                onOpenChat = { friend ->
+                    selectedChatFriend = friend
+                }
+            )
         }
     }
 }
@@ -168,8 +203,9 @@ fun LeaderboardTab(
 fun FriendsTab(
     friendList: List<CommunityUser>,
     pendingRequests: List<FriendRequest>,
-    onAction: (String, Int?, String?) -> Unit
-) {
+    onAction: (String, Int?, String?) -> Unit,
+    onOpenChat: (CommunityUser) -> Unit
+){
     var searchQuery by remember { mutableStateOf("") }
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp), contentPadding = PaddingValues(top = 16.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -214,7 +250,17 @@ fun FriendsTab(
             }
         } else {
             items(items = friendList, key = { it.id }) { friend ->
-                CommunityUserCard(user = friend, isMe = false, onAddFriend = {}, onDeleteFriend = { onAction("delete", friend.id.toInt(), null) })
+                CommunityUserCard(
+                    user = friend,
+                    isMe = false,
+                    onAddFriend = {},
+                    onDeleteFriend = {
+                        onAction("delete", friend.id.toInt(), null)
+                    },
+                    onOpenChat = {
+                        onOpenChat(friend)
+                    }
+                )
             }
         }
     }
@@ -384,7 +430,8 @@ fun CommunityUserCard(
     user: CommunityUser,
     isMe: Boolean,
     onAddFriend: () -> Unit,
-    onDeleteFriend: () -> Unit
+    onDeleteFriend: () -> Unit,
+    onOpenChat: (() -> Unit)? = null
 ) {
     var showAchievementDialog by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
@@ -418,7 +465,13 @@ fun CommunityUserCard(
     }
 
     OutlinedCard(
-        onClick = { showAchievementDialog = true },
+        onClick = {
+            if (onOpenChat != null) {
+                onOpenChat()
+            } else {
+                showAchievementDialog = true
+            }
+        },
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(28.dp),
         colors = CardDefaults.outlinedCardColors(containerColor = Color.White),

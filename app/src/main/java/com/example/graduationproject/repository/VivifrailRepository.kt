@@ -7,37 +7,40 @@ class VivifrailRepository {
 
     /**
      * @param level A / B / C / D，也支援 B+、C+，會自動轉成 B、C
-     * @param day 1~5，代表週一到週五
+     * @param day 1~7，代表週一到週日（六日為休息日）
      * @param week 1~12，代表第幾週；第 7 週後步行訓練會進階
      */
     fun getDailyPlan(level: String, day: Int, week: Int = 1): DailyPlan {
-        require(day in 1..5) { "day 必須是 1 到 5，代表週一到週五" }
+        require(day in 1..7) { "day 必須是 1 到 7，代表週一到週日" }
         require(week in 1..12) { "week 必須是 1 到 12" }
 
         val baseLevel = level.take(1).uppercase()
 
-        val exercises = when (baseLevel) {
-            "A" -> getAExercises()
+        val exercises = when {
+            day > 5 -> emptyList()
+            else -> when (baseLevel) {
+                "A" -> getAExercises()
 
-            "B" -> when {
-                isWheelDay(day) -> getBWheelExercises(week)
-                isWalkingOnlyDay(day) -> listOf(getBWalkingExercise(week))
+                "B" -> when {
+                    isWheelDay(day) -> getBWheelExercises(week)
+                    isWalkingOnlyDay(day) -> listOf(getBWalkingExercise(week))
+                    else -> emptyList()
+                }
+
+                "C" -> when {
+                    isWheelDay(day) -> getCWheelExercises(week)
+                    isWalkingOnlyDay(day) -> listOf(getCWalkingExercise(week))
+                    else -> emptyList()
+                }
+
+                "D" -> when {
+                    isWheelDay(day) -> getDWheelExercises(week)
+                    isWalkingOnlyDay(day) -> listOf(getDWalkingExercise(week))
+                    else -> emptyList()
+                }
+
                 else -> emptyList()
             }
-
-            "C" -> when {
-                isWheelDay(day) -> getCWheelExercises(week)
-                isWalkingOnlyDay(day) -> listOf(getCWalkingExercise(week))
-                else -> emptyList()
-            }
-
-            "D" -> when {
-                isWheelDay(day) -> getDWheelExercises(week)
-                isWalkingOnlyDay(day) -> listOf(getDWalkingExercise(week))
-                else -> emptyList()
-            }
-
-            else -> emptyList()
         }
 
         return DailyPlan(day, level, exercises)
