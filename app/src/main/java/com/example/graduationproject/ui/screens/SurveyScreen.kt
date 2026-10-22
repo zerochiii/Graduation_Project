@@ -68,7 +68,11 @@ fun AssessmentContent(
 ) {
     val step = viewModel.currentStep
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxSize()
+            .navigationBarsPadding()
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -153,8 +157,18 @@ fun AssessmentContent(
 
                 Spacer(modifier = Modifier.height(40.dp))
 
-                TextButton(onClick = onBack) {
-                    Text("暫時離開並儲存進度", fontSize = 18.scaledSp(), color = TextMain.copy(alpha = 0.4f))
+                TextButton(
+                    onClick = onBack,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                ) {
+                    Text(
+                        text = "暫時離開並儲存進度",
+                        fontSize = 18.scaledSp(),
+                        color = TextMain.copy(alpha = 0.4f),
+                        textAlign = TextAlign.Center
+                    )
                 }
             }
         }
