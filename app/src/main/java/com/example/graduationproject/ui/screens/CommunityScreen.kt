@@ -51,9 +51,14 @@ fun CommunityScreen(
     currentUserAvatarId: String = DEFAULT_PROFILE_AVATAR_ID,
     currentUserAvatarColorId: String = DEFAULT_PROFILE_AVATAR_COLOR_ID,
     currentUserAvatarSource: AvatarSource = AvatarSource.Preset(currentUserAvatarId),
-    currentUserDisplayName: String = ""
+    currentUserDisplayName: String = "",
+    openChatFriendId: Int? = null,
+    onChatOpened: () -> Unit = {}
 ) {
     var selectedTabIndex by remember { mutableIntStateOf(0) }
+    var selectedChatFriend by remember(accountId) {
+        mutableStateOf<CommunityUser?>(null)
+    }
     val tabs = listOf("社區排行榜", "我的好友")
 
     val leaderboardList = remember { mutableStateListOf<CommunityUser>() }
@@ -101,6 +106,18 @@ fun CommunityScreen(
     LaunchedEffect(accountId, selectedTabIndex) {
         refreshData()
     }
+    LaunchedEffect(openChatFriendId, friendList.toList()) {
+        if (openChatFriendId != null) {
+            val friend = friendList.firstOrNull {
+                it.id.toIntOrNull() == openChatFriendId
+            }
+            if (friend != null) {
+                selectedTabIndex = 1
+                selectedChatFriend = friend
+                onChatOpened()
+            }
+        }
+    }
 
     val currentUserFromApi = leaderboardList.find { it.id == accountId.toString() }
         ?: CommunityUser(
@@ -124,6 +141,15 @@ fun CommunityScreen(
         val startDay = calendar.get(Calendar.DAY_OF_MONTH)
         calendar.add(Calendar.DATE, 6)
         "$startMonth/$startDay - ${calendar.get(Calendar.MONTH) + 1}/${calendar.get(Calendar.DAY_OF_MONTH)}"
+    }
+
+    selectedChatFriend?.let { friend ->
+        ChatScreen(
+            accountId = accountId,
+            friend = friend,
+            onBack = { selectedChatFriend = null }
+        )
+        return
     }
 
     Column(modifier = Modifier.fillMaxSize().background(BeigeBg)) {
@@ -150,7 +176,14 @@ fun CommunityScreen(
                 onAction = sendAction
             )
         } else {
-            FriendsTab(friendList, pendingRequests, sendAction)
+            FriendsTab(
+                friendList = friendList,
+                pendingRequests = pendingRequests,
+                onAction = sendAction,
+                onOpenChat = { friend ->
+                    selectedChatFriend = friend
+                }
+            )
         }
     }
 }
@@ -218,8 +251,9 @@ fun LeaderboardTab(
 fun FriendsTab(
     friendList: List<CommunityUser>,
     pendingRequests: List<FriendRequest>,
-    onAction: (String, Int?, String?) -> Unit
-) {
+    onAction: (String, Int?, String?) -> Unit,
+    onOpenChat: (CommunityUser) -> Unit
+){
     var searchQuery by remember { mutableStateOf("") }
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp), contentPadding = PaddingValues(top = 16.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -264,7 +298,17 @@ fun FriendsTab(
             }
         } else {
             items(items = friendList, key = { it.id }) { friend ->
-                CommunityUserCard(user = friend, isMe = false, onAddFriend = {}, onDeleteFriend = { onAction("delete", friend.id.toInt(), null) })
+                CommunityUserCard(
+                    user = friend,
+                    isMe = false,
+                    onAddFriend = {},
+                    onDeleteFriend = {
+                        onAction("delete", friend.id.toInt(), null)
+                    },
+                    onOpenChat = {
+                        onOpenChat(friend)
+                    }
+                )
             }
         }
     }
@@ -447,7 +491,8 @@ fun CommunityUserCard(
     avatarColorId: String? = null,
     avatarSource: AvatarSource? = null,
     onAddFriend: () -> Unit,
-    onDeleteFriend: () -> Unit
+    onDeleteFriend: () -> Unit,
+    onOpenChat: (() -> Unit)? = null
 ) {
     var showAchievementDialog by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
@@ -481,7 +526,13 @@ fun CommunityUserCard(
     }
 
     OutlinedCard(
-        onClick = { showAchievementDialog = true },
+        onClick = {
+            if (onOpenChat != null) {
+                onOpenChat()
+            } else {
+                showAchievementDialog = true
+            }
+        },
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(28.dp),
         colors = CardDefaults.outlinedCardColors(containerColor = Color.White),

@@ -1,8 +1,8 @@
+
 package com.example.graduationproject.ui.screens
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -49,7 +50,6 @@ import java.util.Calendar
 import kotlin.math.cos
 import kotlin.math.sin
 
-// MD3 高齡者友善色調
 private val BeigeBg = Color(0xFFFDFCF9)
 private val PrimaryPeach = Color(0xFFFF8A65)
 private val SecondaryTeal = Color(0xFF4DB6AC)
@@ -58,14 +58,12 @@ private val StatsPastelOrange = Color(0xFFFFF3E0)
 private val TextMain = Color(0xFF201A18)
 private val TextSub = Color(0xFF5D5D5D)
 
-/**
- * 修改處：新增通知類型與資料類別，timeText 改為 createdAtMillis
- */
 enum class NotificationType {
     SURVEY,
     TRAINING,
     POINTS,
     SOCIAL,
+    CHAT,
     SYSTEM
 }
 
@@ -75,19 +73,14 @@ data class HomeNotification(
     val message: String,
     val createdAtMillis: Long,
     val type: NotificationType,
-    val isRead: Boolean = false
+    val isRead: Boolean = false,
+    val friendAccountId: Int? = null
 )
 
-/**
- * 依據時間戳記回傳相對時間文字
- */
 private fun getRelativeTimeText(createdAtMillis: Long): String {
-    val now = System.currentTimeMillis()
-    val diffMillis = now - createdAtMillis
-    val diffMinutes = diffMillis / (60 * 1000)
+    val diffMinutes = (System.currentTimeMillis() - createdAtMillis) / 60000
     val diffHours = diffMinutes / 60
     val diffDays = diffHours / 24
-
     return when {
         diffMinutes < 1 -> "剛剛"
         diffMinutes < 60 -> "${diffMinutes} 分鐘前"
@@ -97,21 +90,14 @@ private fun getRelativeTimeText(createdAtMillis: Long): String {
     }
 }
 
-/**
- * 依據當前小時回傳對應的問候語
- */
 private fun getGreetingText(): String {
-    val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-    return when (hour) {
+    return when (Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) {
         in 5..10 -> "早安"
         in 11..16 -> "午安"
         else -> "晚安"
     }
 }
 
-/**
- * 依據 SPPB 分數判斷體能狀態文字
- */
 private fun getFitnessStatusText(assessmentState: AssessmentState): String {
     return when (assessmentState) {
         AssessmentState.Loading -> "載入中"
@@ -148,74 +134,37 @@ fun ElderlyDashboard(
     var streakDays by remember { mutableIntStateOf(0) }
     var currentWeek by remember(accountId) { mutableStateOf<Int?>(null) }
     var selectedItem by remember { mutableIntStateOf(0) }
+    var requestedChatFriendId by remember(accountId) {
+        mutableStateOf<Int?>(null)
+    }
+    var showNotificationScreen by remember(accountId) { mutableStateOf(false) }
+
     val assessmentState = userViewModel.assessmentState
     val isSurveyComplete = assessmentState is AssessmentState.Assessed
     val currentGrade = (assessmentState as? AssessmentState.Assessed)?.grade
+    val notificationViewModel: NotificationViewModel = viewModel()
+    val notifications = notificationViewModel.notifications
+    val context = LocalContext.current
 
-    // 通知狀態管理與標記已讀邏輯
-    var showNotificationScreen by remember { mutableStateOf(false) }
-    var notifications by remember { mutableStateOf<List<HomeNotification>>(emptyList()) }
-
-    fun markNotificationAsRead(id: Int) {
-        notifications = notifications.map {
-            if (it.id == id) it.copy(isRead = true) else it
+    LaunchedEffect(accountId, selectedItem, showNotificationScreen) {
+        if (accountId <= 0) {
+            notificationViewModel.reset()
+            return@LaunchedEffect
         }
-    }
-
-    // 依據評估狀態初始化通知內容
-    LaunchedEffect(assessmentState) {
-        val now = System.currentTimeMillis()
-        val generated = when (assessmentState) {
-            AssessmentState.Loading -> emptyList()
-            AssessmentState.NotAssessed -> listOf(
-                HomeNotification(
-                    id = 1,
-                    title = "體能評估提醒",
-                    message = "請先完成體能評估，以便為您安排專屬任務。",
-                    createdAtMillis = now,
-                    type = NotificationType.SURVEY,
-                    isRead = false
-                )
-            )
-            is AssessmentState.Assessed -> listOf(
-                HomeNotification(
-                    id = 1,
-                    title = "今日訓練提醒",
-                    message = "今天還有訓練任務尚未完成，記得開始今日訓練。",
-                    createdAtMillis = now,
-                    type = NotificationType.TRAINING,
-                    isRead = false
-                ),
-                HomeNotification(
-                    id = 2,
-                    title = "點數獎勵提醒",
-                    message = "完成訓練可獲得點數，累積後可兌換獎勵。",
-                    createdAtMillis = now - (60 * 60 * 1000),
-                    type = NotificationType.POINTS,
-                    isRead = false
-                )
-            )
-            is AssessmentState.Inconsistent, is AssessmentState.Error -> listOf(
-                HomeNotification(
-                    id = 1,
-                    title = "評估資料異常",
-                    message = "目前無法確認您的評估結果，請重新評估或稍後再試。",
-                    createdAtMillis = now,
-                    type = NotificationType.SYSTEM,
-                    isRead = false
-                )
-            )
+        if (selectedItem == 0 || showNotificationScreen) {
+            while (true) {
+                notificationViewModel.load(accountId)
+                delay(10000)
+            }
         }
-        notifications = generated
     }
 
     LaunchedEffect(accountId, selectedItem) {
         if (accountId <= 0 || selectedItem != 0) return@LaunchedEffect
-
         try {
-            val request = GetPointsRequest(accountId = accountId)
-            val response = ApiClient.apiService.getElderDashboardData(request)
-
+            val response = ApiClient.apiService.getElderDashboardData(
+                GetPointsRequest(accountId = accountId)
+            )
             if (response.isSuccessful && response.body()?.success == true) {
                 val data = response.body()!!
                 elderName = data.name
@@ -231,12 +180,18 @@ fun ElderlyDashboard(
                 )
             } else {
                 onDashboardDataLoadFailed()
-                userViewModel.reportAssessmentLoadError(accountId, "無法取得首頁評估資料")
+                userViewModel.reportAssessmentLoadError(
+                    accountId,
+                    "無法取得首頁評估資料"
+                )
             }
         } catch (e: Exception) {
             e.printStackTrace()
             onDashboardDataLoadFailed()
-            userViewModel.reportAssessmentLoadError(accountId, "無法取得首頁評估資料")
+            userViewModel.reportAssessmentLoadError(
+                accountId,
+                "無法取得首頁評估資料"
+            )
         }
     }
 
@@ -251,15 +206,45 @@ fun ElderlyDashboard(
     if (showNotificationScreen) {
         NotificationScreen(
             notifications = notifications,
-            onBack = { showNotificationScreen = false },
-            onAction = { notification ->
-                markNotificationAsRead(notification.id)
+            onBack = {
                 showNotificationScreen = false
-                when (notification.type) {
-                    NotificationType.SURVEY -> onNavigateToSurvey()
-                    NotificationType.TRAINING -> selectedItem = 1
-                    NotificationType.POINTS -> selectedItem = 3
-                    else -> {}
+            },
+            onAction = { notification ->
+                val friendId = notification.friendAccountId
+                if (notification.type == NotificationType.CHAT && friendId == null) {
+                    android.widget.Toast.makeText(
+                        context,
+                        "無法找到聊天對象",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    notificationViewModel.markAsRead(accountId, notification.id)
+                    showNotificationScreen = false
+                    when (notification.type) {
+                        NotificationType.SURVEY -> onNavigateToSurvey()
+                        NotificationType.TRAINING -> selectedItem = 1
+                        NotificationType.POINTS -> selectedItem = 3
+                        NotificationType.SOCIAL -> selectedItem = 2
+                        NotificationType.CHAT -> {
+                            requestedChatFriendId = friendId
+                            selectedItem = 2
+                        }
+                        NotificationType.SYSTEM -> Unit
+                    }
+                }
+            },
+            onDelete = { notification ->
+                notificationViewModel.deleteNotification(
+                    accountId,
+                    notification.id
+                ) { success ->
+                    if (!success) {
+                        android.widget.Toast.makeText(
+                            context,
+                            "刪除通知失敗，請稍後重試",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
                 }
             }
         )
@@ -270,18 +255,20 @@ fun ElderlyDashboard(
             topBar = {
                 if (selectedItem == 0) {
                     CenterAlignedTopAppBar(
-                        title = { },
+                        title = {},
                         navigationIcon = {
                             IconButton(onClick = onNavigateToSettings) {
-                                Icon(imageVector = Icons.Default.Settings, contentDescription = "設定", modifier = Modifier.size(32.dp), tint = TextMain)
+                                Icon(
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = "設定",
+                                    modifier = Modifier.size(32.dp),
+                                    tint = TextMain
+                                )
                             }
                         },
                         actions = {
-                            // 修改處：優化通知圖示與 Badge 位置，解決裁切問題
                             val unreadCount = notifications.count { !it.isRead }
-                            Box(
-                                //modifier = Modifier.padding(end = 12.dp)
-                            ) {
+                            Box {
                                 IconButton(
                                     onClick = { showNotificationScreen = true },
                                     modifier = Modifier.size(56.dp)
@@ -296,7 +283,6 @@ fun ElderlyDashboard(
                                             modifier = Modifier.size(32.dp),
                                             tint = TextMain
                                         )
-
                                         if (unreadCount > 0) {
                                             Box(
                                                 modifier = Modifier
@@ -321,7 +307,9 @@ fun ElderlyDashboard(
                                 }
                             }
                         },
-                        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent)
+                        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                            containerColor = Color.Transparent
+                        )
                     )
                 }
             },
@@ -338,24 +326,38 @@ fun ElderlyDashboard(
                         ) {
                             Text(
                                 text = when (assessmentState) {
-                                    is AssessmentState.Assessed -> "💡 預計 15 分鐘，請準備一張穩固的椅子"
-                                    AssessmentState.Loading -> "💡 正在載入評估資料"
-                                    AssessmentState.NotAssessed -> "💡 請先完成評估，以便為您安排專屬任務"
-                                    is AssessmentState.Inconsistent, is AssessmentState.Error -> "💡 評估資料異常，請重新評估或稍後再試"
+                                    is AssessmentState.Assessed ->
+                                        "預計 15 分鐘，請準備一張穩固的椅子"
+                                    AssessmentState.Loading ->
+                                        "正在載入評估資料"
+                                    AssessmentState.NotAssessed ->
+                                        "請先完成評估，以便為您安排專屬任務"
+                                    is AssessmentState.Inconsistent, is AssessmentState.Error ->
+                                        "評估資料異常，請重新評估或稍後再試"
                                 },
-                                fontSize = 16.scaledSp(), fontWeight = FontWeight.Bold, color = PrimaryPeach, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                fontSize = 16.scaledSp(),
+                                fontWeight = FontWeight.Bold,
+                                color = PrimaryPeach,
+                                modifier = Modifier.padding(
+                                    horizontal = 12.dp,
+                                    vertical = 6.dp
+                                )
                             )
                         }
-
                         ScaleButton(
                             onClick = {
-                                if (isSurveyComplete) selectedItem = 1 else onNavigateToSurvey()
+                                if (isSurveyComplete) {
+                                    selectedItem = 1
+                                } else {
+                                    onNavigateToSurvey()
+                                }
                             },
                             text = when (assessmentState) {
-                                is AssessmentState.Assessed -> "🏃 開始今日訓練"
+                                is AssessmentState.Assessed -> "開始今日訓練"
                                 AssessmentState.Loading -> "評估資料載入中"
                                 AssessmentState.NotAssessed -> "前往填寫體能量表問卷"
-                                is AssessmentState.Inconsistent, is AssessmentState.Error -> "重新進行體能評估"
+                                is AssessmentState.Inconsistent, is AssessmentState.Error ->
+                                    "重新進行體能評估"
                             },
                             modifier = Modifier.fillMaxWidth(0.9f).height(80.dp),
                             enabled = assessmentState != AssessmentState.Loading,
@@ -369,7 +371,9 @@ fun ElderlyDashboard(
             },
             floatingActionButtonPosition = FabPosition.Center,
             bottomBar = {
-                ElderlyNavigationBar(selectedItem, items, icons) { selectedItem = it }
+                ElderlyNavigationBar(selectedItem, items, icons) {
+                    selectedItem = it
+                }
             }
         ) { innerPadding ->
             Box(modifier = Modifier.padding(innerPadding)) {
@@ -397,25 +401,69 @@ fun ElderlyDashboard(
                         currentUserAvatarId = currentUserAvatarId,
                         currentUserAvatarColorId = currentUserAvatarColorId,
                         currentUserAvatarSource = currentUserAvatarSource,
-                        currentUserDisplayName = currentUserDisplayName
+                        currentUserDisplayName = currentUserDisplayName,
+                        openChatFriendId = requestedChatFriendId,
+                        onChatOpened = {
+                            requestedChatFriendId = null
+                        }
                     )
-                    3 -> RewardScreen(accountId = accountId, currentPoints = currentPoints, onPointsUpdated = { currentPoints = it })
+                    3 -> RewardScreen(
+                        accountId = accountId,
+                        currentPoints = currentPoints,
+                        onPointsUpdated = { currentPoints = it }
+                    )
                 }
             }
         }
     }
 }
 
-/**
- * 通知頁面組件
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NotificationScreen(
     notifications: List<HomeNotification>,
     onBack: () -> Unit,
-    onAction: (HomeNotification) -> Unit
+    onAction: (HomeNotification) -> Unit,
+    onDelete: (HomeNotification) -> Unit
 ) {
+    var notificationToDelete by remember {
+        mutableStateOf<HomeNotification?>(null)
+    }
+
+    notificationToDelete?.let { notification ->
+        AlertDialog(
+            onDismissRequest = {
+                notificationToDelete = null
+            },
+            title = {
+                Text("刪除通知")
+            },
+            text = {
+                Text("確定要刪除「${notification.title}」嗎？刪除後將不再顯示。")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDelete(notification)
+                        notificationToDelete = null
+                    }
+                ) {
+                    Text(
+                        text = "刪除",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { notificationToDelete = null }
+                ) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = BeigeBg,
@@ -439,13 +487,17 @@ fun NotificationScreen(
                         )
                     }
                 },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent)
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = Color.Transparent
+                )
             )
         }
     ) { innerPadding ->
         if (notifications.isEmpty()) {
             Column(
-                modifier = Modifier.fillMaxSize().padding(innerPadding),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -462,24 +514,30 @@ fun NotificationScreen(
                     fontWeight = FontWeight.Bold,
                     color = TextMain
                 )
-                Text(
-                    text = "完成訓練或收到提醒後，通知會顯示在這裡。",
-                    fontSize = 18.scaledSp(),
-                    color = TextSub,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 40.dp, vertical = 8.dp)
-                )
             }
         } else {
             LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(innerPadding),
-                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+                contentPadding = PaddingValues(
+                    horizontal = 24.dp,
+                    vertical = 16.dp
+                ),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                items(notifications) { notification ->
+                items(
+                    items = notifications,
+                    key = { it.id }
+                ) { notification ->
                     NotificationCard(
                         notification = notification,
-                        onActionClick = { onAction(notification) }
+                        onActionClick = {
+                            onAction(notification)
+                        },
+                        onDeleteClick = {
+                            notificationToDelete = notification
+                        }
                     )
                 }
             }
@@ -487,15 +545,11 @@ fun NotificationScreen(
     }
 }
 
-/**
- * 修正卡片點擊問題。
- * 1. 移除 Surface 上的 clickable，確保點擊空白處不會觸發動作。
- * 2. 只有底部的 Button 使用 onActionClick 進行觸發。
- */
 @Composable
 fun NotificationCard(
     notification: HomeNotification,
-    onActionClick: () -> Unit
+    onActionClick: () -> Unit,
+    onDeleteClick: () -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -503,20 +557,21 @@ fun NotificationCard(
         color = Color.White,
         shadowElevation = 4.dp
     ) {
-        Column(
-            modifier = Modifier.padding(20.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 val iconInfo = when (notification.type) {
-                    NotificationType.SURVEY -> Icons.AutoMirrored.Filled.Assignment to PrimaryPeach
-                    NotificationType.TRAINING -> Icons.Default.FitnessCenter to SecondaryTeal
-                    NotificationType.POINTS -> Icons.Default.MonetizationOn to PrimaryPeach
-                    NotificationType.SOCIAL -> Icons.Default.Groups to SecondaryTeal
-                    NotificationType.SYSTEM -> Icons.Default.Info to Color.Gray
+                    NotificationType.SURVEY ->
+                        Icons.AutoMirrored.Filled.Assignment to PrimaryPeach
+                    NotificationType.TRAINING ->
+                        Icons.Default.FitnessCenter to SecondaryTeal
+                    NotificationType.POINTS ->
+                        Icons.Default.MonetizationOn to PrimaryPeach
+                    NotificationType.SOCIAL ->
+                        Icons.Default.Groups to SecondaryTeal
+                    NotificationType.SYSTEM ->
+                        Icons.Default.Info to Color.Gray
+                    NotificationType.CHAT -> Icons.Default.Chat to Color(0xFF4F648D)
                 }
-
                 Box(
                     modifier = Modifier
                         .size(56.dp)
@@ -531,20 +586,18 @@ fun NotificationCard(
                         modifier = Modifier.size(32.dp)
                     )
                 }
-
                 Spacer(modifier = Modifier.width(16.dp))
-
                 Column(modifier = Modifier.weight(1f)) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
                             text = notification.title,
                             fontSize = 22.scaledSp(),
                             fontWeight = FontWeight.ExtraBold,
-                            color = TextMain
+                            color = TextMain,
+                            modifier = Modifier.weight(1f)
                         )
                         if (!notification.isRead) {
                             Box(
@@ -552,6 +605,16 @@ fun NotificationCard(
                                     .size(10.dp)
                                     .clip(CircleShape)
                                     .background(PrimaryPeach)
+                            )
+                        }
+                        IconButton(
+                            onClick = onDeleteClick,
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "刪除通知",
+                                tint = TextSub
                             )
                         }
                     }
@@ -562,23 +625,23 @@ fun NotificationCard(
                     )
                 }
             }
-
             Spacer(modifier = Modifier.height(12.dp))
-
             Text(
                 text = notification.message,
                 fontSize = 18.scaledSp(),
                 color = TextMain,
                 lineHeight = 26.sp
             )
-
             Spacer(modifier = Modifier.height(16.dp))
-
             Button(
                 onClick = onActionClick,
-                modifier = Modifier.fillMaxWidth().height(56.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (notification.type == NotificationType.TRAINING) SecondaryTeal else PrimaryPeach
+                    containerColor = if (
+                        notification.type == NotificationType.TRAINING
+                    ) SecondaryTeal else PrimaryPeach
                 ),
                 shape = RoundedCornerShape(28.dp)
             ) {
@@ -587,6 +650,7 @@ fun NotificationCard(
                         NotificationType.SURVEY -> "前往評估"
                         NotificationType.TRAINING -> "開始訓練"
                         NotificationType.POINTS -> "查看獎勵"
+                        NotificationType.CHAT -> "查看訊息"
                         else -> "查看詳情"
                     },
                     fontSize = 20.scaledSp(),
@@ -609,22 +673,24 @@ fun DashboardContent(
     assessmentState: AssessmentState,
     onNavigateToSurvey: () -> Unit
 ) {
-    var greetingText by remember { mutableStateOf(getGreetingText()) }
-
+    var greetingText by remember {
+        mutableStateOf(getGreetingText())
+    }
     LaunchedEffect(Unit) {
         while (true) {
             delay(60000)
             greetingText = getGreetingText()
         }
     }
-
-    // 五邊形圖：五個訓練指標的平均準確率 (0f~1f)，預設全空，等 API 回來後填入
-    var radarProgress by remember { mutableStateOf<Map<FitnessCategory, Float>>(emptyMap()) }
-
+    var radarProgress by remember {
+        mutableStateOf<Map<FitnessCategory, Float>>(emptyMap())
+    }
     LaunchedEffect(accountId) {
         if (accountId <= 0) return@LaunchedEffect
         try {
-            val response = ApiClient.apiService.getFitnessRadar(GetFitnessRadarRequest(accountId))
+            val response = ApiClient.apiService.getFitnessRadar(
+                GetFitnessRadarRequest(accountId)
+            )
             if (response.isSuccessful && response.body()?.success == true) {
                 val raw = response.body()?.radar ?: emptyMap()
                 radarProgress = FitnessCategory.entries.associateWith { category ->
@@ -637,8 +703,13 @@ fun DashboardContent(
     }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
-        contentPadding = PaddingValues(top = 8.dp, bottom = 140.dp)
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 24.dp),
+        contentPadding = PaddingValues(
+            top = 8.dp,
+            bottom = 140.dp
+        )
     ) {
         item {
             Column {
@@ -658,13 +729,20 @@ fun DashboardContent(
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.padding(
+                                horizontal = 12.dp,
+                                vertical = 6.dp
+                            ),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(imageVector = Icons.Default.Verified, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                            Icon(
+                                imageVector = Icons.Default.Verified,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = Color.White
+                            )
                             Spacer(modifier = Modifier.width(4.dp))
-
-                            val levelTitle = when(elderLevel) {
+                            val levelTitle = when (elderLevel) {
                                 1 -> "新手長青"
                                 2 -> "健康長青"
                                 3 -> "活力長青"
@@ -672,29 +750,39 @@ fun DashboardContent(
                             }
                             Text(
                                 text = "Lv.$elderLevel $levelTitle",
-                                fontSize = 18.scaledSp(), fontWeight = FontWeight.Bold, color = Color.White
+                                fontSize = 18.scaledSp(),
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
                             )
                         }
                     }
-
                     Surface(
                         color = Color(0xFFE8F5E9),
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Text(
                             text = "體能狀態：${getFitnessStatusText(assessmentState)}",
-                            fontSize = 18.scaledSp(), fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32), modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            fontSize = 18.scaledSp(),
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF2E7D32),
+                            modifier = Modifier.padding(
+                                horizontal = 12.dp,
+                                vertical = 6.dp
+                            )
                         )
                     }
                 }
             }
         }
-        item { Spacer(modifier = Modifier.height(24.dp)) }
-
         item {
-            StatsFilledCardsRow(streakDays = streakDays, currentPoints = currentPoints)
             Spacer(modifier = Modifier.height(24.dp))
-
+        }
+        item {
+            StatsFilledCardsRow(
+                streakDays = streakDays,
+                currentPoints = currentPoints
+            )
+            Spacer(modifier = Modifier.height(24.dp))
             Column(modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -707,24 +795,34 @@ fun DashboardContent(
                             in 1..12 -> "目前進度：第 $currentWeek 週"
                             else -> "目前進度：資料異常"
                         },
-                        fontSize = 18.scaledSp(), fontWeight = FontWeight.Bold, color = SecondaryTeal
+                        fontSize = 18.scaledSp(),
+                        fontWeight = FontWeight.Bold,
+                        color = SecondaryTeal
                     )
                     Text(
                         text = "共 12 週",
-                        fontSize = 18.scaledSp(), color = TextSub
+                        fontSize = 18.scaledSp(),
+                        color = TextSub
                     )
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 LinearProgressIndicator(
-                    progress = { currentWeek?.takeIf { it in 1..12 }?.toFloat()?.div(12f) ?: 0f },
-                    modifier = Modifier.fillMaxWidth().height(12.dp).clip(RoundedCornerShape(6.dp)),
+                    progress = {
+                        currentWeek
+                            ?.takeIf { it in 1..12 }
+                            ?.toFloat()
+                            ?.div(12f) ?: 0f
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(12.dp)
+                        .clip(RoundedCornerShape(6.dp)),
                     color = SecondaryTeal,
                     trackColor = SecondaryTeal.copy(alpha = 0.2f)
                 )
             }
             Spacer(modifier = Modifier.height(24.dp))
         }
-
         item {
             DigitalTwinElevatedCard(progress = radarProgress)
         }
@@ -781,28 +879,30 @@ fun HealthRadarChart(
                 val angle = Math.toRadians(j * 72.0 - 90.0).toFloat()
                 val x = centerX + radius * cos(angle)
                 val y = centerY + radius * sin(angle)
-                if (j == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                if (j == 0) path.moveTo(x, y)
+                else path.lineTo(x, y)
             }
             path.close()
-            drawPath(path, color = Color.LightGray.copy(alpha = 0.5f), style = Stroke(width = 2f))
+            drawPath(
+                path,
+                color = Color.LightGray.copy(alpha = 0.5f),
+                style = Stroke(width = 2f)
+            )
         }
 
         labels.forEachIndexed { j, label ->
             val angle = Math.toRadians(j * 72.0 - 90.0).toFloat()
             val x = centerX + maxRadius * cos(angle)
             val y = centerY + maxRadius * sin(angle)
-
             drawLine(
                 color = Color.LightGray.copy(alpha = 0.5f),
                 start = Offset(centerX, centerY),
                 end = Offset(x, y),
                 strokeWidth = 2f
             )
-
             val labelRadius = maxRadius + 24.dp.toPx()
             val labelX = centerX + labelRadius * cos(angle)
             val labelY = centerY + labelRadius * sin(angle)
-
             val textLayoutResult = textMeasurer.measure(
                 text = label,
                 style = TextStyle(
@@ -811,10 +911,12 @@ fun HealthRadarChart(
                     color = TextMain
                 )
             )
-
             drawText(
                 textLayoutResult = textLayoutResult,
-                topLeft = Offset(labelX - textLayoutResult.size.width / 2, labelY - textLayoutResult.size.height / 2)
+                topLeft = Offset(
+                    labelX - textLayoutResult.size.width / 2,
+                    labelY - textLayoutResult.size.height / 2
+                )
             )
         }
 
@@ -824,36 +926,61 @@ fun HealthRadarChart(
             val angle = Math.toRadians(j * 72.0 - 90.0).toFloat()
             val x = centerX + radius * cos(angle)
             val y = centerY + radius * sin(angle)
-            if (j == 0) dataPath.moveTo(x, y) else dataPath.lineTo(x, y)
+            if (j == 0) dataPath.moveTo(x, y)
+            else dataPath.lineTo(x, y)
         }
         dataPath.close()
 
-        drawPath(dataPath, color = SecondaryTeal.copy(alpha = 0.3f))
-        drawPath(dataPath, color = SecondaryTeal, style = Stroke(width = 6f))
+        drawPath(
+            dataPath,
+            color = SecondaryTeal.copy(alpha = 0.3f)
+        )
+        drawPath(
+            dataPath,
+            color = SecondaryTeal,
+            style = Stroke(width = 6f)
+        )
 
         for (j in 0 until 5) {
             val radius = maxRadius * data[j]
             val angle = Math.toRadians(j * 72.0 - 90.0).toFloat()
             val x = centerX + radius * cos(angle)
             val y = centerY + radius * sin(angle)
-            drawCircle(color = SecondaryTeal, radius = 6f, center = Offset(x, y))
+            drawCircle(
+                color = SecondaryTeal,
+                radius = 6f,
+                center = Offset(x, y)
+            )
         }
     }
 }
 
 @Composable
-fun DigitalTwinElevatedCard(progress: Map<FitnessCategory, Float> = emptyMap()) {
+fun DigitalTwinElevatedCard(
+    progress: Map<FitnessCategory, Float> = emptyMap()
+) {
     ElevatedCard(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 280.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 280.dp),
         shape = RoundedCornerShape(32.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = Color.White),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 8.dp)
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = Color.White
+        ),
+        elevation = CardDefaults.elevatedCardElevation(
+            defaultElevation = 8.dp
+        )
     ) {
         Box(
-            modifier = Modifier.fillMaxSize().padding(16.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
             contentAlignment = Alignment.Center
         ) {
-            HealthRadarChart(modifier = Modifier.size(240.dp), progress = progress)
+            HealthRadarChart(
+                modifier = Modifier.size(240.dp),
+                progress = progress
+            )
         }
     }
 }
@@ -871,10 +998,14 @@ fun FilledCard(
     Card(
         modifier = modifier.heightIn(min = 140.dp),
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = containerColor)
+        colors = CardDefaults.cardColors(
+            containerColor = containerColor
+        )
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             Icon(
@@ -933,7 +1064,11 @@ fun ElderlyNavigationBar(
                     Text(
                         text = item,
                         fontSize = 14.scaledSp(),
-                        fontWeight = if (selectedItem == index) FontWeight.Bold else FontWeight.Normal
+                        fontWeight = if (selectedItem == index) {
+                            FontWeight.Bold
+                        } else {
+                            FontWeight.Normal
+                        }
                     )
                 },
                 selected = selectedItem == index,

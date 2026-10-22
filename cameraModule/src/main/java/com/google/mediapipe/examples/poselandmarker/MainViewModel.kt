@@ -1,25 +1,10 @@
-/*
- * Copyright 2023 The TensorFlow Authors. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *       http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package com.google.mediapipe.examples.poselandmarker
 
+import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -27,23 +12,22 @@ import org.json.JSONObject
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Locale
+import java.util.UUID
 
-/**
- *  This ViewModel is used to store pose landmarker helper settings
- */
 data class ExerciseResult(
-    val exerciseName: String,     // 運動名稱 (例如: "水瓶舉重")
-    val exerciseId: String = "",  // 運動 ID
-    val reps: Int = 0,            // 總次數
-    val sets: Int = 0,            // 總組數
-    val steps: Int = 0,           // 總步數 (步行類運動用)
-    val accuracy: Float = 0f,     // 平均準確率
-    val durationSeconds: Int = 0, // 總運動時長 (秒)
+    val exerciseName: String,
+    val exerciseId: String = "",
+    val reps: Int = 0,
+    val sets: Int = 0,
+    val steps: Int = 0,
+    val accuracy: Float = 0f,
+    val durationSeconds: Int = 0,
     val timestamp: Long = System.currentTimeMillis()
 )
 enum class ExerciseMode {
-    LEG_LIFT,      // 抬腿 (使用 Pose)
-    SQUEEZE_BALL,  // 捏球 (使用 Hand + Object)
+    LEG_LIFT,
+    SQUEEZE_BALL,
     IDLE
 }
 
@@ -59,11 +43,14 @@ internal fun resolveExpectedExerciseCode(
     level: String,
     expectedCode: String?
 ): String? {
-    val baseLevel = level.trim().uppercase().take(1)
-    if (baseLevel.isBlank() || resultCodes.isBlank()) return null
-    val codes = resultCodes.split(",").map(String::trim)
-    return if (expectedCode != null) {
-        expectedCode.takeIf { it.startsWith("$baseLevel-") && it in codes }
+    val baseLevel = level.trim().uppercase(Locale.ROOT).take(1)
+    if (baseLevel !in listOf("A", "B", "C", "D")) return null
+    val codes = resultCodes.split(",")
+        .map { it.trim().uppercase(Locale.ROOT) }
+        .filter { it.isNotEmpty() }
+    val expected = expectedCode?.trim()?.uppercase(Locale.ROOT)
+    return if (expected != null) {
+        expected.takeIf { it.startsWith("$baseLevel-") && it in codes }
     } else {
         codes.firstOrNull { it.startsWith("$baseLevel-") }
     }
@@ -78,18 +65,22 @@ internal class SingleTrainingResultGuard {
         submitted = true
         return true
     }
+    @Synchronized
+    fun reset() {
+        submitted = false
+    }
 }
 
-internal fun isSuccessfulSaveResponse(responseCode: Int, responseBody: String?): Boolean {
+internal fun isSuccessfulSaveResponse(
+    responseCode: Int,
+    responseBody: String?,
+    expectedRequestId: String? = null
+): Boolean {
     if (responseCode !in 200..299 || responseBody.isNullOrBlank()) return false
-
     return runCatching {
-        val responseJson = JsonParser.parseString(responseBody)
-        if (!responseJson.isJsonObject) return@runCatching false
-        val success = responseJson.asJsonObject.get("success")
-        success?.isJsonPrimitive == true &&
-            success.asJsonPrimitive.isBoolean &&
-            success.asBoolean
+        val json = JSONObject(responseBody)
+        json.opt("success") == true &&
+                (expectedRequestId == null || json.optString("request_id") == expectedRequestId)
     }.getOrDefault(false)
 }
 
@@ -102,38 +93,37 @@ internal fun trainingSaveUrl(apiBaseUrl: String): URL =
     URL(apiBaseUrl.trim().trimEnd('/') + "/api/save_exercise_record.php")
 
 class MainViewModel : ViewModel() {
-
     companion object {
         private const val TAG = "ExerciseData"
-
     }
 
     private var _model = PoseLandmarkerHelper.MODEL_POSE_LANDMARKER_FULL
-    private var _delegate: Int = PoseLandmarkerHelper.DELEGATE_CPU
-    private var _minPoseDetectionConfidence: Float =
+    private var _delegate = PoseLandmarkerHelper.DELEGATE_CPU
+    private var _minPoseDetectionConfidence =
         PoseLandmarkerHelper.DEFAULT_POSE_DETECTION_CONFIDENCE
-    private var _minPoseTrackingConfidence: Float = PoseLandmarkerHelper
-        .DEFAULT_POSE_TRACKING_CONFIDENCE
-    private var _minPosePresenceConfidence: Float = PoseLandmarkerHelper
-        .DEFAULT_POSE_PRESENCE_CONFIDENCE
+    private var _minPoseTrackingConfidence =
+        PoseLandmarkerHelper.DEFAULT_POSE_TRACKING_CONFIDENCE
+    private var _minPosePresenceConfidence =
+        PoseLandmarkerHelper.DEFAULT_POSE_PRESENCE_CONFIDENCE
 
     val currentDelegate: Int get() = _delegate
     val currentModel: Int get() = _model
-    val currentMinPoseDetectionConfidence: Float
-        get() =
-            _minPoseDetectionConfidence
-    val currentMinPoseTrackingConfidence: Float
-        get() =
-            _minPoseTrackingConfidence
-    val currentMinPosePresenceConfidence: Float
-        get() =
-            _minPosePresenceConfidence
+    val currentMinPoseDetectionConfidence: Float get() = _minPoseDetectionConfidence
+    val currentMinPoseTrackingConfidence: Float get() = _minPoseTrackingConfidence
+    val currentMinPosePresenceConfidence: Float get() = _minPosePresenceConfidence
 
-    private var accountId: Int = -1
-    private var userLevel: String = ""
+    private var accountId = -1
+    private var userLevel = ""
     private var expectedExerciseCode: String? = null
-    private var apiBaseUrl: String = ""
+    private var apiBaseUrl = ""
     private val submissionGuard = SingleTrainingResultGuard()
+    private var pendingResult: ExerciseResult? = null
+    private var pendingRequestId: String? = null
+    private val _lastResult = MutableLiveData<ExerciseResult>()
+    val lastResult: LiveData<ExerciseResult> get() = _lastResult
+
+    private val _saveStatus = MutableLiveData(SaveStatus.IDLE)
+    val saveStatus: LiveData<SaveStatus> get() = _saveStatus
 
     fun setAccountInfo(
         accountId: Int,
@@ -142,82 +132,100 @@ class MainViewModel : ViewModel() {
         apiBaseUrl: String
     ) {
         this.accountId = accountId
-        this.userLevel = userLevel.trim().uppercase().take(1)
+        this.userLevel = userLevel.trim().uppercase(Locale.ROOT).take(1)
         this.expectedExerciseCode = expectedCode
         this.apiBaseUrl = apiBaseUrl
+        pendingResult = null
+        pendingRequestId = null
+        submissionGuard.reset()
+        _saveStatus.value = SaveStatus.IDLE
     }
 
-    private val _lastResult = MutableLiveData<ExerciseResult>()
-    val lastResult: LiveData<ExerciseResult> get() = _lastResult
-
-    private val _saveStatus = MutableLiveData<SaveStatus>()
-    val saveStatus: LiveData<SaveStatus> get() = _saveStatus
-
     fun postResult(result: ExerciseResult) {
+        val resultToSave = pendingResult ?: result
         val exerciseCode = resolveExpectedExerciseCode(
-            result.exerciseId,
+            resultToSave.exerciseId,
             userLevel,
             expectedExerciseCode
         )
-        if (accountId <= 0 || exerciseCode == null) {
-            android.util.Log.w(
+        if (accountId <= 0 || exerciseCode == null || apiBaseUrl.isBlank()) {
+            Log.e(
                 TAG,
-                "缺少 accountId 或無法解析 exerciseCode（exerciseId=${result.exerciseId}, userLevel=$userLevel），這次訓練成績不會被存檔"
+                "訓練資料不正確: accountId=$accountId, level=$userLevel, exerciseId=${resultToSave.exerciseId}"
             )
             _saveStatus.postValue(SaveStatus.FAILED)
             return
         }
         if (!submissionGuard.trySubmit()) return
-
+        pendingResult = resultToSave
+        val requestId = pendingRequestId ?: UUID.randomUUID().toString().also {
+            pendingRequestId = it
+        }
         _saveStatus.postValue(SaveStatus.SAVING)
         viewModelScope.launch {
             val success = withContext(Dispatchers.IO) {
                 var connection: HttpURLConnection? = null
                 try {
-                    val url = trainingSaveUrl(apiBaseUrl)
-                    connection = (url.openConnection() as HttpURLConnection).apply {
+                    connection = (trainingSaveUrl(apiBaseUrl)
+                        .openConnection() as HttpURLConnection).apply {
                         requestMethod = "POST"
                         doOutput = true
-                        setRequestProperty("Content-Type", "application/json; charset=utf-8")
                         connectTimeout = 8000
                         readTimeout = 8000
+                        setRequestProperty("Content-Type", "application/json; charset=utf-8")
                     }
-
                     val body = JSONObject().apply {
                         put("account_id", accountId)
                         put("exercise_code", exerciseCode)
-                        put("accuracy", result.accuracy)
-                        put("duration_seconds", result.durationSeconds)
-                        put("exp_gained", result.accuracy.toInt())
+                        put("accuracy", resultToSave.accuracy)
+                        put("duration_seconds", resultToSave.durationSeconds)
+                        put("exp_gained", resultToSave.accuracy.toInt())
+                        put("request_id", requestId)
                     }
-
-                    OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use { writer ->
-                        writer.write(body.toString())
-                        writer.flush()
+                    OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use {
+                        it.write(body.toString())
+                        it.flush()
                     }
-
                     val responseCode = connection.responseCode
                     val responseBody = (if (responseCode in 200..299) {
                         connection.inputStream
                     } else {
                         connection.errorStream
                     })?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
-
-                    isSuccessfulSaveResponse(responseCode, responseBody)
+                    val saved = isSuccessfulSaveResponse(
+                        responseCode,
+                        responseBody,
+                        requestId
+                    )
+                    if (!saved) {
+                        Log.e(TAG, "API 未確認儲存成功: HTTP $responseCode, $responseBody")
+                    } else {
+                        Log.d(TAG, "訓練儲存成功: $exerciseCode, request_id=$requestId")
+                    }
+                    saved
                 } catch (e: Exception) {
-                    android.util.Log.e(TAG, "上傳訓練紀錄失敗", e)
+                    Log.e(TAG, "上傳訓練紀錄失敗", e)
                     false
                 } finally {
                     connection?.disconnect()
                 }
             }
-
-            android.util.Log.d(TAG, "訓練成績存檔${if (success) "成功" else "失敗"}: $result (exercise_code=$exerciseCode)")
-            resultToPublishAfterSave(result, success)?.let(_lastResult::postValue)
-            _saveStatus.postValue(if (success) SaveStatus.SUCCESS else SaveStatus.FAILED)
+            if (success) {
+                _saveStatus.postValue(SaveStatus.SUCCESS)
+                resultToPublishAfterSave(resultToSave, true)?.let(_lastResult::postValue)
+            } else {
+                submissionGuard.reset()
+                _saveStatus.postValue(SaveStatus.FAILED)
+            }
         }
     }
 
+    fun retryPendingResult(): Boolean {
+        val result = pendingResult ?: return false
+        if (saveStatus.value == SaveStatus.SAVING) return false
+        postResult(result)
+        return true
+    }
 
     fun setDelegate(delegate: Int) {
         _delegate = delegate

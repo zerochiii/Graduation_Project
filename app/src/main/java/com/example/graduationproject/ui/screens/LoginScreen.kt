@@ -25,6 +25,7 @@ import com.example.graduationproject.api.ApiClient
 import com.example.graduationproject.ui.components.ScaleButton
 import com.example.graduationproject.ui.theme.GraduationProjectTheme
 import kotlinx.coroutines.launch
+import android.content.Context
 
 // 延續專案色調
 private val BeigeBg = Color(0xFFFDFCF9)
@@ -47,6 +48,7 @@ fun LoginScreen(
 
     var isLoading by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -193,6 +195,10 @@ fun LoginScreen(
                                     val safeRole = body.data?.role ?: "elder"
                                     val realAccountId = body.data?.account_id ?: 0
 
+                                    context.getSharedPreferences("ElderCarePrefs", Context.MODE_PRIVATE)
+                                        .edit()
+                                        .putString("CHAT_TOKEN", body.data?.chatToken.orEmpty())
+                                        .apply()
                                     onLoginSuccess(safeRole, realAccountId)
                                 } else {
                                     /*
