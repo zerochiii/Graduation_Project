@@ -1,8 +1,12 @@
 package com.example.graduationproject.ui.screens
 
+import android.app.Application
+import android.content.SharedPreferences
+import android.content.pm.ApplicationInfo
 import com.example.graduationproject.resolveCameraExerciseRoute
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import java.lang.reflect.Proxy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -49,7 +53,7 @@ class AssignmentViewModelTest {
         val viewModel = readyViewModel()
         val attempt = requireNotNull(viewModel.beginTraining("A1"))
 
-        assertTrue(viewModel.applyTrainingResult(attempt.id, "A1", completed = true))
+        assertTrue(applySuccessfulTrainingResult(viewModel, attempt.id, "A1"))
 
         val state = viewModel.uiState.first { "A1" in it.completedExerciseIds }
         assertEquals("A2", state.exercises.first { it.status.name == "CURRENT" }.id)
@@ -60,7 +64,7 @@ class AssignmentViewModelTest {
         val viewModel = readyViewModel()
         val attempt = requireNotNull(viewModel.beginTraining("A1"))
 
-        assertTrue(viewModel.applyTrainingResult(attempt.id, "A1", completed = true))
+        assertTrue(applySuccessfulTrainingResult(viewModel, attempt.id, "A1"))
         assertFalse(viewModel.applyTrainingResult(attempt.id, "A1", completed = true))
 
         assertEquals(setOf("A1"), viewModel.uiState.first { "A1" in it.completedExerciseIds }.completedExerciseIds)
@@ -74,7 +78,7 @@ class AssignmentViewModelTest {
         val current = requireNotNull(viewModel.beginTraining("A1"))
 
         assertFalse(viewModel.applyTrainingResult(stale.id, "A1", completed = true))
-        assertTrue(viewModel.applyTrainingResult(current.id, "A1", completed = true))
+        assertTrue(applySuccessfulTrainingResult(viewModel, current.id, "A1"))
     }
 
     @Test
@@ -111,20 +115,54 @@ class AssignmentViewModelTest {
         val viewModel = readyViewModel()
         for (exerciseId in listOf("A1", "A2", "A3", "A4", "A5", "A6", "A7")) {
             val attempt = requireNotNull(viewModel.beginTraining(exerciseId))
-            assertTrue(viewModel.applyTrainingResult(attempt.id, exerciseId, completed = true))
+            assertTrue(applySuccessfulTrainingResult(viewModel, attempt.id, exerciseId))
             viewModel.uiState.first { exerciseId in it.completedExerciseIds }
         }
 
         val state = viewModel.loadedState()
         assertEquals(7, state.completedExerciseIds.size)
         assertTrue(state.exercises.all { it.status.name == "COMPLETED" })
+        assertFalse(state.exercises.any { it.status.name == "CURRENT" })
+        assertNull(viewModel.beginTraining("A1"))
+    }
+
+    @Test
+    fun sameDayServerRecords_restoreCompletedDailyPlan() = runBlocking {
+        val viewModel = testViewModel()
+        viewModel.updateParams(level = "A", day = 1, week = 1)
+
+        restoreServerRecords(
+            viewModel,
+            "A-1", "A-2", "A-3", "A-4", "A-5", "A-6", "A-7"
+        )
+
+        val state = viewModel.loadedState()
+        assertEquals(
+            setOf("A1", "A2", "A3", "A4", "A5", "A6", "A7"),
+            state.completedExerciseIds
+        )
+        assertTrue(state.exercises.all { it.status.name == "COMPLETED" })
+        assertNull(viewModel.beginTraining("A1"))
+    }
+
+    @Test
+    fun newDateWithNoServerRecords_startsNewDailyPlan() = runBlocking {
+        val viewModel = testViewModel()
+        viewModel.updateParams(level = "A", day = 1, week = 1)
+
+        restoreServerRecords(viewModel)
+
+        val state = viewModel.loadedState()
+        assertTrue(state.completedExerciseIds.isEmpty())
+        assertEquals("A1", state.exercises.first { it.status.name == "CURRENT" }.id)
+        assertNotNull(viewModel.beginTraining("A1"))
     }
 
     @Test
     fun resetForAccountChange_clearsPlanCompletionAndActiveAttempt() = runBlocking {
         val viewModel = readyViewModel()
         val attempt = requireNotNull(viewModel.beginTraining("A1"))
-        assertTrue(viewModel.applyTrainingResult(attempt.id, "A1", completed = true))
+        assertTrue(applySuccessfulTrainingResult(viewModel, attempt.id, "A1"))
         assertNotNull(viewModel.beginTraining("A2"))
 
         viewModel.resetForAccountChange()
@@ -134,7 +172,9 @@ class AssignmentViewModelTest {
         assertTrue(state.exercises.isEmpty())
         assertTrue(state.completedExerciseIds.isEmpty())
 
+        TestApplicationState.accountId = -1
         viewModel.updateParams(level = "A", day = 1, week = 1)
+        markRecordsReady(viewModel)
         assertNotNull(viewModel.beginTraining("A1"))
     }
 
@@ -184,7 +224,7 @@ class AssignmentViewModelTest {
 
     @Test
     fun updateParams_usesExplicitWeekAndRegeneratesAdvancedPlan() = runBlocking {
-        val viewModel = AssignmentViewModel()
+        val viewModel = testViewModel()
         viewModel.updateParams(level = "B", day = 1, week = 6)
         assertEquals("2-5分鐘/組", viewModel.loadedState().exercises.first { it.id == "B7" }.repsOrTime)
 
@@ -194,7 +234,7 @@ class AssignmentViewModelTest {
 
     @Test
     fun missingOrInvalidWeek_doesNotFallbackToWeekOne() = runBlocking {
-        val viewModel = AssignmentViewModel()
+        val viewModel = testViewModel()
 
         viewModel.updateParams(level = "B", day = 1, week = null)
         assertTrue(viewModel.uiState.value.isWeekLoading)
@@ -212,9 +252,7 @@ class AssignmentViewModelTest {
 
     @Test
     fun trainingAttempt_capturesValidatedWeek() = runBlocking {
-        val viewModel = AssignmentViewModel()
-        viewModel.updateParams(level = "D", day = 1, week = 12)
-        viewModel.loadedState()
+        val viewModel = readyViewModel(level = "D", week = 12)
 
         assertEquals(12, requireNotNull(viewModel.beginTraining("D9")).week)
     }
@@ -231,13 +269,118 @@ class AssignmentViewModelTest {
         assertNull(resolveCameraExerciseRoute("B7", 0))
     }
 
-    private suspend fun readyViewModel(): AssignmentViewModel {
-        return AssignmentViewModel().also {
-            it.updateParams(level = "A", day = 1, week = 1)
-            it.loadedState()
+    private suspend fun readyViewModel(
+        level: String = "A",
+        week: Int = 1
+    ): AssignmentViewModel {
+        return testViewModel().also { viewModel ->
+            viewModel.updateParams(level = level, day = 1, week = week)
+            markRecordsReady(viewModel)
+            viewModel.loadedState()
         }
+    }
+
+    private fun testViewModel(): AssignmentViewModel {
+        TestApplicationState.accountId = -1
+        val application = allocateWithoutConstructor(TestApplication::class.java)
+        return AssignmentViewModel(application)
+    }
+
+    private fun markRecordsReady(viewModel: AssignmentViewModel) {
+        TestApplicationState.accountId = TEST_ACCOUNT_ID
+        setField(viewModel, "accountId", TEST_ACCOUNT_ID)
+        setField(viewModel, "recordsReady", true)
+        setField(viewModel, "recordsLoading", false)
+        viewModel.javaClass.getDeclaredMethod("refreshUiState").apply {
+            isAccessible = true
+        }.invoke(viewModel)
+    }
+
+    private fun restoreServerRecords(
+        viewModel: AssignmentViewModel,
+        vararg exerciseCodes: String
+    ) {
+        setField(viewModel, "exerciseCounts", exerciseCodes.groupingBy { it }.eachCount())
+        markRecordsReady(viewModel)
+    }
+
+    private fun applySuccessfulTrainingResult(
+        viewModel: AssignmentViewModel,
+        attemptId: Long,
+        exerciseId: String
+    ): Boolean {
+        TestApplicationState.accountId = -1
+        setField(viewModel, "accountId", -1)
+        return try {
+            viewModel.applyTrainingResult(attemptId, exerciseId, completed = true)
+        } finally {
+            TestApplicationState.accountId = TEST_ACCOUNT_ID
+            setField(viewModel, "accountId", TEST_ACCOUNT_ID)
+        }
+    }
+
+    private fun setField(target: Any, name: String, value: Any) {
+        target.javaClass.getDeclaredField(name).apply {
+            isAccessible = true
+        }.set(target, value)
     }
 
     private suspend fun AssignmentViewModel.loadedState(): AssignmentUiState =
         uiState.first { it.dailyPlan != null && it.exercises.isNotEmpty() }
+
+    private class TestApplication : Application() {
+        override fun getSharedPreferences(name: String?, mode: Int): SharedPreferences =
+            TestApplicationState.preferences
+
+        override fun getApplicationInfo(): ApplicationInfo =
+            allocateWithoutConstructor(ApplicationInfo::class.java).apply {
+                flags = ApplicationInfo.FLAG_DEBUGGABLE
+            }
+    }
+
+    private object TestApplicationState {
+        var accountId: Int = -1
+
+        val preferences: SharedPreferences = Proxy.newProxyInstance(
+            SharedPreferences::class.java.classLoader,
+            arrayOf(SharedPreferences::class.java)
+        ) { _, method, arguments ->
+            when (method.name) {
+                "getInt" -> if (arguments?.firstOrNull() == "ACCOUNT_ID") {
+                    accountId
+                } else {
+                    arguments?.getOrNull(1) as? Int ?: -1
+                }
+                "contains" -> arguments?.firstOrNull() == "ACCOUNT_ID" && accountId > 0
+                "getAll" -> if (accountId > 0) mapOf("ACCOUNT_ID" to accountId) else emptyMap<String, Any>()
+                "toString" -> "TestSharedPreferences"
+                "hashCode" -> System.identityHashCode(this)
+                "equals" -> false
+                else -> defaultValue(method.returnType)
+            }
+        } as SharedPreferences
+
+        private fun defaultValue(type: Class<*>): Any? = when (type) {
+            java.lang.Boolean.TYPE -> false
+            java.lang.Integer.TYPE -> 0
+            java.lang.Long.TYPE -> 0L
+            java.lang.Float.TYPE -> 0f
+            else -> null
+        }
+    }
+
+    private companion object {
+        const val TEST_ACCOUNT_ID = 2
+
+        @Suppress("UNCHECKED_CAST")
+        fun <T> allocateWithoutConstructor(type: Class<T>): T {
+            val unsafeType = Class.forName("sun.misc.Unsafe")
+            val unsafe = unsafeType.getDeclaredField("theUnsafe").let { field ->
+                field.isAccessible = true
+                field.get(null)
+            }
+            return unsafeType.getMethod("allocateInstance", Class::class.java)
+                .invoke(unsafe, type) as T
+        }
+    }
 }
