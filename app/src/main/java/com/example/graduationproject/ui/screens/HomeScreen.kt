@@ -125,6 +125,8 @@ fun ElderlyDashboard(
     currentUserAvatarColorId: String = DEFAULT_PROFILE_AVATAR_COLOR_ID,
     currentUserAvatarSource: AvatarSource = AvatarSource.Preset(currentUserAvatarId),
     currentUserDisplayName: String = "",
+    showAssessmentCompletionNotice: Boolean = false,
+    onAcknowledgeAssessmentCompletionNotice: () -> Unit = {},
     onDashboardDataLoaded: (String, Int, Int, Int) -> Unit = { _, _, _, _ -> },
     onDashboardDataLoadFailed: () -> Unit = {}
 ) {
@@ -394,6 +396,9 @@ fun ElderlyDashboard(
                         isSurveyComplete = isSurveyComplete,
                         onNavigateToSurvey = onNavigateToSurvey,
                         onStartTraining = onStartTraining,
+                        showAssessmentCompletionNotice = showAssessmentCompletionNotice,
+                        onAcknowledgeAssessmentCompletionNotice =
+                            onAcknowledgeAssessmentCompletionNotice,
                         viewModel = assignmentViewModel
                     )
                     2 -> CommunityScreen(

@@ -22,6 +22,10 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.graduationproject.DataClass.SaveAssessmentRequest
 import com.example.graduationproject.api.ApiClient
+import com.example.graduationproject.assessment.AssessmentCompletionNoticeViewModel
+import com.example.graduationproject.assessment.AssessmentCompletionNoticeViewModelFactory
+import com.example.graduationproject.assessment.SharedPreferencesAssessmentCompletionNoticeStore
+import com.example.graduationproject.assessment.shouldMarkAssessmentCompletionNoticePending
 import com.example.graduationproject.profile.AppPrivateProfileAvatarFileManager
 import com.example.graduationproject.profile.ProfileCustomizationViewModel
 import com.example.graduationproject.profile.ProfileCustomizationViewModelFactory
@@ -114,6 +118,15 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
     val savedAccountId = sharedPreferences.getInt("ACCOUNT_ID", -1)
     var globalAccountId by remember { mutableIntStateOf(savedAccountId) }
     val assignmentViewModel: AssignmentViewModel = viewModel()
+    val assessmentNoticeViewModelFactory: ViewModelProvider.Factory = remember(sharedPreferences) {
+        AssessmentCompletionNoticeViewModelFactory(
+            SharedPreferencesAssessmentCompletionNoticeStore(sharedPreferences)
+        )
+    }
+    val assessmentNoticeViewModel: AssessmentCompletionNoticeViewModel = viewModel(
+        factory = assessmentNoticeViewModelFactory
+    )
+    val assessmentNoticeState = assessmentNoticeViewModel.uiState
     val avatarFiles = remember(context) {
         AppPrivateProfileAvatarFileManager(context.filesDir, context.cacheDir)
     }
@@ -137,6 +150,7 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
     val logoutToLogin: () -> Unit = {
         userViewModel.reset()
         assignmentViewModel.resetForAccountChange()
+        assessmentNoticeViewModel.reset()
         profileCustomizationViewModel.reset()
         sharedPreferences.edit().remove("ACCOUNT_ID").apply()
         globalAccountId = -1
@@ -149,6 +163,7 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
         if (userViewModel.bindAccount(globalAccountId)) {
             assignmentViewModel.resetForAccountChange()
         }
+        assessmentNoticeViewModel.bindAccount(globalAccountId)
         profileCustomizationViewModel.bindAccount(globalAccountId)
     }
 
@@ -237,6 +252,12 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
                 currentUserAvatarColorId = profileCustomizationState.avatarColorId,
                 currentUserAvatarSource = profileCustomizationState.avatarSource,
                 currentUserDisplayName = profileCustomizationState.displayName,
+                showAssessmentCompletionNotice =
+                    assessmentNoticeState.accountId == globalAccountId &&
+                        assessmentNoticeState.pending,
+                onAcknowledgeAssessmentCompletionNotice = {
+                    assessmentNoticeViewModel.acknowledge(globalAccountId)
+                },
                 onDashboardDataLoaded = { name, level, week, points ->
                     dashboardName = name
                     dashboardLevel = level
@@ -270,7 +291,13 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
 
                             val response = ApiClient.apiService.saveAssessment(request)
 
-                            if (response.isSuccessful && response.body()?.success == true) {
+                            val businessSuccessful = response.body()?.success == true
+                            if (shouldMarkAssessmentCompletionNoticePending(
+                                    httpSuccessful = response.isSuccessful,
+                                    businessSuccessful = businessSuccessful
+                                )
+                            ) {
+                                assessmentNoticeViewModel.markPending(globalAccountId)
                                 Toast.makeText(localContext, "評估結果已成功紀錄", Toast.LENGTH_SHORT).show()
                                 userViewModel.updateAssessmentAfterSave(
                                     accountId = globalAccountId,

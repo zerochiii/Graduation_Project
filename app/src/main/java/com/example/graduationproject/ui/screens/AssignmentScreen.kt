@@ -1,9 +1,5 @@
 package com.example.graduationproject.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -16,7 +12,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,13 +24,15 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.graduationproject.DataClass.Exercise
 import com.example.graduationproject.DataClass.ExerciseStatus
+import com.example.graduationproject.assessment.ASSESSMENT_COMPLETION_NOTICE_ACTION
+import com.example.graduationproject.assessment.ASSESSMENT_COMPLETION_NOTICE_BODY
+import com.example.graduationproject.assessment.ASSESSMENT_COMPLETION_NOTICE_TITLE
 import com.example.graduationproject.ui.components.ScaleButton
 import com.example.graduationproject.ui.theme.GraduationProjectTheme
 import com.example.graduationproject.ui.theme.scaledSp
 
 private val BeigeBg = Color(0xFFFDFCF9)
 private val PrimaryPeach = Color(0xFFFF8A65)
-private val SecondaryTeal = Color(0xFF4DB6AC)
 private val TextMain = Color(0xFF201A18)
 private val TextSub = Color(0xFF5D5D5D)
 
@@ -48,15 +45,42 @@ fun AssignmentScreen(
     isSurveyComplete: Boolean = false,
     onNavigateToSurvey: () -> Unit = {},
     onStartTraining: (String?) -> Unit = {},
+    showAssessmentCompletionNotice: Boolean = false,
+    onAcknowledgeAssessmentCompletionNotice: () -> Unit = {},
     viewModel: AssignmentViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    var isBannerVisible by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(isSurveyComplete, userLevel) {
-        if (isSurveyComplete && userLevel.isNotEmpty()) {
-            isBannerVisible = true
-        }
+    if (showAssessmentCompletionNotice) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = {
+                Text(
+                    text = ASSESSMENT_COMPLETION_NOTICE_TITLE,
+                    fontSize = 26.scaledSp(),
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = ASSESSMENT_COMPLETION_NOTICE_BODY,
+                    fontSize = 20.scaledSp(),
+                    lineHeight = 30.scaledSp()
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = onAcknowledgeAssessmentCompletionNotice,
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text(
+                        text = ASSESSMENT_COMPLETION_NOTICE_ACTION,
+                        fontSize = 20.scaledSp(),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        )
     }
 
     LaunchedEffect(userLevel, currentDay, currentWeek, isSurveyComplete) {
@@ -86,39 +110,6 @@ fun AssignmentScreen(
         containerColor = BeigeBg
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
-
-            AnimatedVisibility(
-                visible = isBannerVisible && isSurveyComplete && userLevel.isNotEmpty(),
-                enter = expandVertically(),
-                exit = shrinkVertically() + fadeOut()
-            ) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 8.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    border = BorderStroke(2.dp, SecondaryTeal.copy(alpha = 0.3f)),
-                    colors = CardDefaults.cardColors(
-                        containerColor = SecondaryTeal.copy(alpha = 0.1f),
-                        contentColor = SecondaryTeal
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "評估完成！級別為 $userLevel，已派發專屬任務。",
-                            fontSize = 18.scaledSp(),
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.weight(1f)
-                        )
-                        IconButton(onClick = { isBannerVisible = false }) {
-                            Icon(imageVector = Icons.Default.Close, contentDescription = "關閉")
-                        }
-                    }
-                }
-            }
 
             if (!isSurveyComplete || userLevel.isEmpty()) {
                 EmptyStateView(onNavigateToSurvey)
