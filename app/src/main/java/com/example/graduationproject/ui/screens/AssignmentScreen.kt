@@ -24,9 +24,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.graduationproject.DataClass.Exercise
 import com.example.graduationproject.DataClass.ExerciseStatus
-import com.example.graduationproject.assessment.ASSESSMENT_COMPLETION_NOTICE_ACTION
-import com.example.graduationproject.assessment.ASSESSMENT_COMPLETION_NOTICE_BODY
-import com.example.graduationproject.assessment.ASSESSMENT_COMPLETION_NOTICE_TITLE
+import com.example.graduationproject.assessment.AssessmentCompletionDialog
 import com.example.graduationproject.ui.components.ScaleButton
 import com.example.graduationproject.ui.theme.GraduationProjectTheme
 import com.example.graduationproject.ui.theme.scaledSp
@@ -52,35 +50,7 @@ fun AssignmentScreen(
     val uiState by viewModel.uiState.collectAsState()
 
     if (showAssessmentCompletionNotice) {
-        AlertDialog(
-            onDismissRequest = {},
-            title = {
-                Text(
-                    text = ASSESSMENT_COMPLETION_NOTICE_TITLE,
-                    fontSize = 26.scaledSp(),
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Text(
-                    text = ASSESSMENT_COMPLETION_NOTICE_BODY,
-                    fontSize = 20.scaledSp(),
-                    lineHeight = 30.scaledSp()
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = onAcknowledgeAssessmentCompletionNotice,
-                    modifier = Modifier.heightIn(min = 48.dp)
-                ) {
-                    Text(
-                        text = ASSESSMENT_COMPLETION_NOTICE_ACTION,
-                        fontSize = 20.scaledSp(),
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        )
+        AssessmentCompletionDialog(onAcknowledge = onAcknowledgeAssessmentCompletionNotice)
     }
 
     LaunchedEffect(userLevel, currentDay, currentWeek, isSurveyComplete) {
