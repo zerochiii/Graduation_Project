@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -19,8 +20,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -533,7 +538,20 @@ fun CommunityUserCard(
                 showAchievementDialog = true
             }
         },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (onOpenChat != null) {
+                    Modifier.semantics {
+                        onClick(
+                            label = "與${user.name}聊天",
+                            action = null
+                        )
+                    }
+                } else {
+                    Modifier
+                }
+            ),
         shape = RoundedCornerShape(28.dp),
         colors = CardDefaults.outlinedCardColors(containerColor = Color.White),
         border = CardDefaults.outlinedCardBorder(enabled = true).copy(width = 1.dp)
@@ -583,7 +601,9 @@ fun CommunityUserCard(
                     text = user.name,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    color = TextMain
+                    color = TextMain,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = user.level,
@@ -610,7 +630,40 @@ fun CommunityUserCard(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            Box {
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                if (onOpenChat != null) {
+                    FilledTonalButton(
+                        onClick = onOpenChat,
+                        modifier = Modifier
+                            .widthIn(min = 104.dp)
+                            .heightIn(min = 48.dp)
+                            .semantics {
+                                contentDescription = "與${user.name}聊天"
+                            },
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = PrimaryPeach.copy(alpha = 0.16f),
+                            contentColor = PrimaryPeach
+                        ),
+                        shape = RoundedCornerShape(18.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.Chat,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "聊天",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
                 when {
                     isMe -> {
                         Spacer(modifier = Modifier.width(0.dp))
@@ -760,5 +813,34 @@ fun AchievementRow(
 fun CommunityScreenPreview() {
     GraduationProjectTheme {
         CommunityScreen(accountId = 1)
+    }
+}
+
+@Preview(showBackground = true, widthDp = 360, fontScale = 1.5f)
+@Composable
+private fun FriendCardLongNamePreview() {
+    GraduationProjectTheme {
+        Box(
+            modifier = Modifier
+                .background(BeigeBg)
+                .padding(16.dp)
+        ) {
+            CommunityUserCard(
+                user = CommunityUser(
+                    id = "preview-friend",
+                    name = "陳美麗的健康好朋友",
+                    level = "Lv.12 活力長青",
+                    avatarColor = SecondaryTeal.copy(alpha = 0.75f),
+                    weeklyExercise = 5,
+                    weeklyExp = 1280,
+                    rank = 1,
+                    isFriend = true
+                ),
+                isMe = false,
+                onAddFriend = {},
+                onDeleteFriend = {},
+                onOpenChat = {}
+            )
+        }
     }
 }
