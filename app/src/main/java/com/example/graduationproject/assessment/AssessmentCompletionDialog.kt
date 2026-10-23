@@ -103,9 +103,9 @@ private fun AssessmentCompletionDialogCard(
 ) {
     val density = LocalDensity.current
     val compactLayout = availableHeight < 680.dp || density.fontScale >= 1.45f
-    val outerTopPadding = if (compactLayout) 24.dp else 34.dp
-    val medalHeight = if (compactLayout) 142.dp else 174.dp
-    val sectionSpacing = if (compactLayout) 12.dp else 18.dp
+    val outerTopPadding = if (compactLayout) 18.dp else 26.dp
+    val medalHeight = if (compactLayout) 128.dp else 156.dp
+    val sectionSpacing = if (compactLayout) 8.dp else 12.dp
 
     Box(
         modifier = modifier
@@ -137,7 +137,7 @@ private fun AssessmentCompletionDialogCard(
                     start = 22.dp,
                     top = outerTopPadding,
                     end = 22.dp,
-                    bottom = 42.dp
+                    bottom = 46.dp
                 ),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -158,7 +158,7 @@ private fun AssessmentCompletionDialogCard(
                 textAlign = TextAlign.Center
             )
 
-            Spacer(Modifier.height(if (compactLayout) 12.dp else 18.dp))
+            Spacer(Modifier.height(if (compactLayout) 10.dp else 14.dp))
 
             Text(
                 text = ASSESSMENT_COMPLETION_NOTICE_BODY,
@@ -169,7 +169,7 @@ private fun AssessmentCompletionDialogCard(
                 textAlign = TextAlign.Center
             )
 
-            Spacer(Modifier.height(if (compactLayout) 22.dp else 30.dp))
+            Spacer(Modifier.height(if (compactLayout) 18.dp else 24.dp))
 
             AssessmentCompletionButton(onClick = onAcknowledge)
         }
@@ -315,16 +315,16 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawConfetti(
 @Composable
 private fun PeachCloudDecoration(modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
-        val peach = Color(0xFFFFD7BA).copy(alpha = 0.12f)
-        val peachSoft = Color(0xFFFFE7D5).copy(alpha = 0.22f)
+        val peach = Color(0xFFFFB58D).copy(alpha = 0.2f)
+        val peachSoft = Color(0xFFFFD2B0).copy(alpha = 0.32f)
         val y = size.height * 0.74f
 
         drawCircle(peachSoft, size.width * 0.18f, Offset(-size.width * 0.02f, y))
         drawCircle(peach, size.width * 0.14f, Offset(size.width * 0.13f, y + size.width * 0.07f))
         drawCircle(peachSoft, size.width * 0.18f, Offset(size.width * 1.02f, y))
         drawCircle(peach, size.width * 0.14f, Offset(size.width * 0.87f, y + size.width * 0.07f))
-        drawCircle(peach.copy(alpha = 0.08f), size.width * 0.23f, Offset(-size.width * 0.02f, size.height * 0.96f))
-        drawCircle(peach.copy(alpha = 0.08f), size.width * 0.23f, Offset(size.width * 1.02f, size.height * 0.96f))
+        drawCircle(peach.copy(alpha = 0.14f), size.width * 0.23f, Offset(-size.width * 0.02f, size.height * 0.96f))
+        drawCircle(peach.copy(alpha = 0.14f), size.width * 0.23f, Offset(size.width * 1.02f, size.height * 0.96f))
     }
 }
 
