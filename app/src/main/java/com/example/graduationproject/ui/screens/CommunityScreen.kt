@@ -717,7 +717,7 @@ private fun FriendCommunityUserCard(
                 )
             },
         shape = cardShape,
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFCFA)),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFDFB)),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Box(
@@ -951,52 +951,54 @@ private fun FriendChatBubble(
 
 @Composable
 private fun BoxScope.FriendCardCloudDecoration() {
-    Box(
+    Canvas(
         modifier = Modifier
             .matchParentSize()
             .clearAndSetSemantics { }
     ) {
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .offset(x = (-22).dp, y = (-26).dp)
-                .size(width = 88.dp, height = 58.dp)
-                .clip(CircleShape)
-                .background(Color(0xFFFFE6E1).copy(alpha = 0.72f))
+        drawOval(
+            color = Color(0xFFFFDCD4).copy(alpha = 0.46f),
+            topLeft = Offset(
+                x = -size.width * 0.12f,
+                y = -size.height * 0.48f
+            ),
+            size = Size(
+                width = size.width * 0.38f,
+                height = size.height * 0.92f
+            )
         )
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .offset(x = 20.dp, y = 34.dp)
-                .size(width = 148.dp, height = 82.dp)
-                .clip(CircleShape)
-                .background(Color(0xFFFFE9E4).copy(alpha = 0.72f))
+        drawOval(
+            color = Color(0xFFFFF0E5).copy(alpha = 0.42f),
+            topLeft = Offset(
+                x = size.width * 0.81f,
+                y = -size.height * 0.38f
+            ),
+            size = Size(
+                width = size.width * 0.32f,
+                height = size.height * 0.72f
+            )
         )
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .offset(x = 28.dp, y = (-30).dp)
-                .size(72.dp)
-                .clip(CircleShape)
-                .background(Color(0xFFFFF0EC).copy(alpha = 0.8f))
+        drawOval(
+            color = Color(0xFFFFE6DE).copy(alpha = 0.5f),
+            topLeft = Offset(
+                x = -size.width * 0.16f,
+                y = size.height * 0.65f
+            ),
+            size = Size(
+                width = size.width * 0.58f,
+                height = size.height * 0.62f
+            )
         )
-        Icon(
-            imageVector = Icons.Rounded.Favorite,
-            contentDescription = null,
-            tint = Color(0xFFFFC9C2).copy(alpha = 0.58f),
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .offset(x = 44.dp, y = 12.dp)
-                .size(14.dp)
-        )
-        Icon(
-            imageVector = Icons.Rounded.Favorite,
-            contentDescription = null,
-            tint = Color(0xFFFFC9C2).copy(alpha = 0.42f),
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .offset(x = 58.dp, y = (-8).dp)
-                .size(12.dp)
+        drawOval(
+            color = Color(0xFFFFDED8).copy(alpha = 0.44f),
+            topLeft = Offset(
+                x = size.width * 0.55f,
+                y = size.height * 0.7f
+            ),
+            size = Size(
+                width = size.width * 0.62f,
+                height = size.height * 0.58f
+            )
         )
     }
 }
