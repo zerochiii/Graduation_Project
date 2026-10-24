@@ -816,12 +816,14 @@ private fun FriendCommunityUserCard(
                 Box(
                     modifier = Modifier
                         .width(100.dp)
-                        .height(112.dp)
+                        .height(114.dp)
                 ) {
                     FriendChatBubble(
                         friendName = user.name,
                         onClick = onOpenChat,
-                        modifier = Modifier.align(Alignment.TopCenter)
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .offset(y = 4.dp)
                     )
 
                     IconButton(
@@ -835,9 +837,9 @@ private fun FriendCommunityUserCard(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(38.dp)
+                                .size(42.dp)
                                 .shadow(
-                                    elevation = 1.5.dp,
+                                    elevation = 2.dp,
                                     shape = CircleShape,
                                     clip = false,
                                     ambientColor = Color(0x1F000000),
@@ -850,7 +852,7 @@ private fun FriendCommunityUserCard(
                                 imageVector = Icons.Rounded.Delete,
                                 contentDescription = null,
                                 tint = Color(0xFF666666),
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(22.dp)
                             )
                         }
                     }
