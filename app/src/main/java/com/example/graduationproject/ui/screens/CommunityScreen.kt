@@ -785,24 +785,24 @@ private fun FriendCommunityUserCard(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = user.level.substringBefore(' '),
-                        fontSize = 15.sp,
+                        text = user.level,
+                        fontSize = 14.sp,
                         color = SecondaryTeal,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.Medium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = Icons.Rounded.EmojiEvents,
+                            imageVector = Icons.Rounded.MilitaryTech,
                             contentDescription = null,
                             tint = PrimaryPeach,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(20.dp)
                         )
-                        Spacer(modifier = Modifier.width(2.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = "${user.weeklyExp} 經驗值",
-                            fontSize = 14.sp,
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = PrimaryPeach,
                             maxLines = 1,
@@ -815,8 +815,8 @@ private fun FriendCommunityUserCard(
 
                 Box(
                     modifier = Modifier
-                        .width(104.dp)
-                        .height(110.dp)
+                        .width(100.dp)
+                        .height(112.dp)
                 ) {
                     FriendChatBubble(
                         friendName = user.name,
@@ -829,27 +829,39 @@ private fun FriendCommunityUserCard(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .size(48.dp)
-                            .shadow(3.dp, CircleShape)
-                            .background(Color(0xFFFFF8F5), CircleShape)
                             .semantics {
                                 contentDescription = "刪除${user.name}"
                             }
                     ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Delete,
-                            contentDescription = null,
-                            tint = Color(0xFF5F5F5F),
-                            modifier = Modifier.size(24.dp)
-                        )
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .shadow(
+                                    elevation = 1.5.dp,
+                                    shape = CircleShape,
+                                    clip = false,
+                                    ambientColor = Color(0x1F000000),
+                                    spotColor = Color(0x29000000)
+                                )
+                                .background(Color(0xFFFFF8F5), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Delete,
+                                contentDescription = null,
+                                tint = Color(0xFF666666),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 }
 
                 Icon(
                     imageVector = Icons.Rounded.ChevronRight,
                     contentDescription = null,
-                    tint = Color(0xFF777777),
+                    tint = Color(0xFF9A9A9A),
                     modifier = Modifier
-                        .size(24.dp)
+                        .size(22.dp)
                         .clearAndSetSemantics { }
                 )
             }
@@ -867,14 +879,29 @@ private fun FriendChatBubble(
 
     Box(
         modifier = modifier
-            .width(104.dp)
-            .height(60.dp)
+            .width(100.dp)
+            .height(58.dp)
             .semantics {
                 contentDescription = "與${friendName}聊天"
             }
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .height(48.dp)
+                .shadow(
+                    elevation = 4.dp,
+                    shape = RoundedCornerShape(50),
+                    clip = false,
+                    ambientColor = Color(0x33000000),
+                    spotColor = Color(0x40000000)
+                )
+                .clearAndSetSemantics { }
+        )
+
         Canvas(
             modifier = Modifier
                 .matchParentSize()
