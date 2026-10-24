@@ -382,7 +382,7 @@ fun ElderlyDashboard(
                 when (selectedItem) {
                     0 -> DashboardContent(
                         accountId = accountId,
-                        elderName = elderName,
+                        elderName = currentUserDisplayName.ifBlank { elderName },
                         elderLevel = elderLevel,
                         currentPoints = currentPoints,
                         streakDays = streakDays,
