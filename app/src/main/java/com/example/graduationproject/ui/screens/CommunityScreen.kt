@@ -26,6 +26,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -956,49 +957,70 @@ private fun BoxScope.FriendCardCloudDecoration() {
             .matchParentSize()
             .clearAndSetSemantics { }
     ) {
+        val cream = Color(0xFFFFDFAE)
+        val blush = Color(0xFFFFD5D0)
+        val peachIvory = Color(0xFFFFE7DD)
+        fun softTint(color: Color, strength: Float): Color =
+            lerp(Color.White, color, strength)
+        val bottomRightCloud = softTint(cream, 0.34f)
+
         drawOval(
-            color = Color(0xFFFFDCD4).copy(alpha = 0.46f),
-            topLeft = Offset(
-                x = -size.width * 0.12f,
-                y = -size.height * 0.48f
-            ),
-            size = Size(
-                width = size.width * 0.38f,
-                height = size.height * 0.92f
-            )
+            color = softTint(cream, 0.42f),
+            topLeft = Offset(-size.width * 0.08f, -size.height * 0.48f),
+            size = Size(size.width * 0.21f, size.height * 0.68f)
         )
         drawOval(
-            color = Color(0xFFFFF0E5).copy(alpha = 0.42f),
-            topLeft = Offset(
-                x = size.width * 0.81f,
-                y = -size.height * 0.38f
-            ),
-            size = Size(
-                width = size.width * 0.32f,
-                height = size.height * 0.72f
-            )
+            color = softTint(cream, 0.34f),
+            topLeft = Offset(size.width * 0.03f, -size.height * 0.4f),
+            size = Size(size.width * 0.17f, size.height * 0.56f)
         )
         drawOval(
-            color = Color(0xFFFFE6DE).copy(alpha = 0.5f),
-            topLeft = Offset(
-                x = -size.width * 0.16f,
-                y = size.height * 0.65f
-            ),
-            size = Size(
-                width = size.width * 0.58f,
-                height = size.height * 0.62f
-            )
+            color = softTint(peachIvory, 0.28f),
+            topLeft = Offset(size.width * 0.14f, -size.height * 0.23f),
+            size = Size(size.width * 0.1f, size.height * 0.28f)
+        )
+
+        drawOval(
+            color = softTint(blush, 0.32f),
+            topLeft = Offset(size.width * 0.86f, -size.height * 0.34f),
+            size = Size(size.width * 0.16f, size.height * 0.48f)
         )
         drawOval(
-            color = Color(0xFFFFDED8).copy(alpha = 0.44f),
-            topLeft = Offset(
-                x = size.width * 0.55f,
-                y = size.height * 0.7f
-            ),
-            size = Size(
-                width = size.width * 0.62f,
-                height = size.height * 0.58f
-            )
+            color = softTint(peachIvory, 0.26f),
+            topLeft = Offset(size.width * 0.95f, -size.height * 0.15f),
+            size = Size(size.width * 0.11f, size.height * 0.32f)
+        )
+
+        drawOval(
+            color = softTint(blush, 0.42f),
+            topLeft = Offset(-size.width * 0.13f, size.height * 0.84f),
+            size = Size(size.width * 0.29f, size.height * 0.44f)
+        )
+        drawOval(
+            color = softTint(blush, 0.34f),
+            topLeft = Offset(size.width * 0.04f, size.height * 0.88f),
+            size = Size(size.width * 0.24f, size.height * 0.36f)
+        )
+        drawOval(
+            color = softTint(peachIvory, 0.28f),
+            topLeft = Offset(size.width * 0.19f, size.height * 0.93f),
+            size = Size(size.width * 0.17f, size.height * 0.24f)
+        )
+
+        drawOval(
+            color = bottomRightCloud,
+            topLeft = Offset(size.width * 0.5f, size.height * 0.76f),
+            size = Size(size.width * 0.58f, size.height * 0.58f)
+        )
+        drawOval(
+            color = bottomRightCloud,
+            topLeft = Offset(size.width * 0.7f, size.height * 0.62f),
+            size = Size(size.width * 0.38f, size.height * 0.52f)
+        )
+        drawOval(
+            color = bottomRightCloud,
+            topLeft = Offset(size.width * 0.88f, size.height * 0.68f),
+            size = Size(size.width * 0.32f, size.height * 0.48f)
         )
     }
 }
