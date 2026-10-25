@@ -2,7 +2,9 @@ package com.example.graduationproject.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -10,6 +12,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -17,10 +20,21 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -525,13 +539,21 @@ fun CommunityUserCard(
         )
     }
 
+    if (onOpenChat != null) {
+        FriendCommunityUserCard(
+            user = user,
+            avatarId = avatarId,
+            avatarColorId = avatarColorId,
+            avatarSource = avatarSource,
+            onOpenChat = onOpenChat,
+            onDeleteFriend = { showDeleteConfirmDialog = true }
+        )
+        return
+    }
+
     OutlinedCard(
         onClick = {
-            if (onOpenChat != null) {
-                onOpenChat()
-            } else {
-                showAchievementDialog = true
-            }
+            showAchievementDialog = true
         },
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(28.dp),
@@ -583,7 +605,9 @@ fun CommunityUserCard(
                     text = user.name,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    color = TextMain
+                    color = TextMain,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = user.level,
@@ -610,7 +634,7 @@ fun CommunityUserCard(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            Box {
+            Column(horizontalAlignment = Alignment.End) {
                 when {
                     isMe -> {
                         Spacer(modifier = Modifier.width(0.dp))
@@ -669,6 +693,335 @@ fun CommunityUserCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun FriendCommunityUserCard(
+    user: CommunityUser,
+    avatarId: String?,
+    avatarColorId: String?,
+    avatarSource: AvatarSource?,
+    onOpenChat: () -> Unit,
+    onDeleteFriend: () -> Unit
+) {
+    val cardShape = RoundedCornerShape(28.dp)
+
+    Card(
+        onClick = onOpenChat,
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics {
+                onClick(
+                    label = "與${user.name}聊天",
+                    action = null
+                )
+            },
+        shape = cardShape,
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFDFB)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 132.dp)
+                .clip(cardShape)
+        ) {
+            FriendCardCloudDecoration()
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 132.dp)
+                    .padding(horizontal = 10.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = user.rank.toString(),
+                    fontSize = 25.sp,
+                    fontWeight = FontWeight.Black,
+                    color = PrimaryPeach,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.width(24.dp)
+                )
+
+                Spacer(modifier = Modifier.width(6.dp))
+
+                if (avatarId != null || avatarSource != null) {
+                    ProfileAvatar(
+                        avatarSource = avatarSource ?: AvatarSource.Preset(avatarId!!),
+                        avatarColorId = avatarColorId ?: DEFAULT_PROFILE_AVATAR_COLOR_ID,
+                        size = 60.dp,
+                        contentDescription = "${user.name}的社群頭像"
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(60.dp)
+                            .clip(CircleShape)
+                            .background(user.avatarColor),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Person,
+                            contentDescription = null,
+                            modifier = Modifier.size(38.dp),
+                            tint = Color.White
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(10.dp))
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(1.dp)
+                ) {
+                    Text(
+                        text = user.name,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextMain,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = user.level,
+                        fontSize = 14.sp,
+                        color = SecondaryTeal,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Rounded.MilitaryTech,
+                            contentDescription = null,
+                            tint = PrimaryPeach,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "${user.weeklyExp} 經驗值",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = PrimaryPeach,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(4.dp))
+
+                Box(
+                    modifier = Modifier
+                        .width(100.dp)
+                        .height(114.dp)
+                ) {
+                    FriendChatBubble(
+                        friendName = user.name,
+                        onClick = onOpenChat,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .offset(y = 4.dp)
+                    )
+
+                    IconButton(
+                        onClick = onDeleteFriend,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .size(48.dp)
+                            .semantics {
+                                contentDescription = "刪除${user.name}"
+                            }
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .shadow(
+                                    elevation = 2.dp,
+                                    shape = CircleShape,
+                                    clip = false,
+                                    ambientColor = Color(0x1F000000),
+                                    spotColor = Color(0x29000000)
+                                )
+                                .background(Color(0xFFFFF8F5), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Delete,
+                                contentDescription = null,
+                                tint = Color(0xFF666666),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+                }
+
+                Icon(
+                    imageVector = Icons.Rounded.ChevronRight,
+                    contentDescription = null,
+                    tint = Color(0xFF9A9A9A),
+                    modifier = Modifier
+                        .size(22.dp)
+                        .clearAndSetSemantics { }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FriendChatBubble(
+    friendName: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val bubbleColor = Color(0xFFFF806F)
+
+    Box(
+        modifier = modifier
+            .width(100.dp)
+            .height(58.dp)
+            .semantics {
+                contentDescription = "與${friendName}聊天"
+            }
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .height(48.dp)
+                .shadow(
+                    elevation = 4.dp,
+                    shape = RoundedCornerShape(50),
+                    clip = false,
+                    ambientColor = Color(0x33000000),
+                    spotColor = Color(0x40000000)
+                )
+                .clearAndSetSemantics { }
+        )
+
+        Canvas(
+            modifier = Modifier
+                .matchParentSize()
+                .clearAndSetSemantics { }
+        ) {
+            val tailHeight = 10.dp.toPx()
+            val bodyHeight = size.height - tailHeight
+            drawRoundRect(
+                color = bubbleColor,
+                topLeft = Offset.Zero,
+                size = Size(size.width, bodyHeight),
+                cornerRadius = CornerRadius(bodyHeight / 2f, bodyHeight / 2f)
+            )
+            val tailPath = Path().apply {
+                moveTo(18.dp.toPx(), bodyHeight - 2.dp.toPx())
+                lineTo(35.dp.toPx(), bodyHeight - 2.dp.toPx())
+                lineTo(22.dp.toPx(), size.height)
+                close()
+            }
+            drawPath(path = tailPath, color = bubbleColor)
+        }
+
+        Row(
+            modifier = Modifier.padding(bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.Chat,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = "聊天",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.FriendCardCloudDecoration() {
+    Canvas(
+        modifier = Modifier
+            .matchParentSize()
+            .clearAndSetSemantics { }
+    ) {
+        val cream = Color(0xFFFFDFAE)
+        val blush = Color(0xFFFFD5D0)
+        val peachIvory = Color(0xFFFFE7DD)
+        fun softTint(color: Color, strength: Float): Color =
+            lerp(Color.White, color, strength)
+        val bottomRightCloud = softTint(cream, 0.34f)
+
+        drawOval(
+            color = softTint(cream, 0.42f),
+            topLeft = Offset(-size.width * 0.08f, -size.height * 0.48f),
+            size = Size(size.width * 0.21f, size.height * 0.68f)
+        )
+        drawOval(
+            color = softTint(cream, 0.34f),
+            topLeft = Offset(size.width * 0.03f, -size.height * 0.4f),
+            size = Size(size.width * 0.17f, size.height * 0.56f)
+        )
+        drawOval(
+            color = softTint(peachIvory, 0.28f),
+            topLeft = Offset(size.width * 0.14f, -size.height * 0.23f),
+            size = Size(size.width * 0.1f, size.height * 0.28f)
+        )
+
+        drawOval(
+            color = softTint(blush, 0.32f),
+            topLeft = Offset(size.width * 0.86f, -size.height * 0.34f),
+            size = Size(size.width * 0.16f, size.height * 0.48f)
+        )
+        drawOval(
+            color = softTint(peachIvory, 0.26f),
+            topLeft = Offset(size.width * 0.95f, -size.height * 0.15f),
+            size = Size(size.width * 0.11f, size.height * 0.32f)
+        )
+
+        drawOval(
+            color = softTint(blush, 0.42f),
+            topLeft = Offset(-size.width * 0.13f, size.height * 0.84f),
+            size = Size(size.width * 0.29f, size.height * 0.44f)
+        )
+        drawOval(
+            color = softTint(blush, 0.34f),
+            topLeft = Offset(size.width * 0.04f, size.height * 0.88f),
+            size = Size(size.width * 0.24f, size.height * 0.36f)
+        )
+        drawOval(
+            color = softTint(peachIvory, 0.28f),
+            topLeft = Offset(size.width * 0.19f, size.height * 0.93f),
+            size = Size(size.width * 0.17f, size.height * 0.24f)
+        )
+
+        drawOval(
+            color = bottomRightCloud,
+            topLeft = Offset(size.width * 0.5f, size.height * 0.76f),
+            size = Size(size.width * 0.58f, size.height * 0.58f)
+        )
+        drawOval(
+            color = bottomRightCloud,
+            topLeft = Offset(size.width * 0.7f, size.height * 0.62f),
+            size = Size(size.width * 0.38f, size.height * 0.52f)
+        )
+        drawOval(
+            color = bottomRightCloud,
+            topLeft = Offset(size.width * 0.88f, size.height * 0.68f),
+            size = Size(size.width * 0.32f, size.height * 0.48f)
+        )
     }
 }
 
@@ -760,5 +1113,34 @@ fun AchievementRow(
 fun CommunityScreenPreview() {
     GraduationProjectTheme {
         CommunityScreen(accountId = 1)
+    }
+}
+
+@Preview(showBackground = true, widthDp = 360, fontScale = 1.5f)
+@Composable
+private fun FriendCardLongNamePreview() {
+    GraduationProjectTheme {
+        Box(
+            modifier = Modifier
+                .background(BeigeBg)
+                .padding(16.dp)
+        ) {
+            CommunityUserCard(
+                user = CommunityUser(
+                    id = "preview-friend",
+                    name = "測試好友名稱比較長",
+                    level = "Lv.12 活力長青",
+                    avatarColor = Color(0xFF84C8F4),
+                    weeklyExercise = 5,
+                    weeklyExp = 0,
+                    rank = 1,
+                    isFriend = true
+                ),
+                isMe = false,
+                onAddFriend = {},
+                onDeleteFriend = {},
+                onOpenChat = {}
+            )
+        }
     }
 }
