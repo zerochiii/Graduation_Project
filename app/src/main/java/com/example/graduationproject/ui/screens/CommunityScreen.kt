@@ -719,7 +719,7 @@ private fun FriendCommunityUserCard(
             },
         shape = cardShape,
         colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFDFB)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
     ) {
         Box(
             modifier = Modifier
