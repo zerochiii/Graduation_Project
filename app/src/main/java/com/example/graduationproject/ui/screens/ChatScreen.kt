@@ -7,9 +7,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -21,7 +18,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Error
-import androidx.compose.material.icons.rounded.PhotoLibrary
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -45,7 +42,6 @@ import kotlinx.coroutines.delay
 
 private val ChatCanvas = Color(0xFFFAF8F4)
 private val ChatMine = Color(0xFF536A92)
-private val ChatFriend = Color(0xFFFFFDF9)
 private val ChatHeader = Color(0xFFFAF9F6)
 private val ChatInputBar = Color(0xFFFBFAF8)
 private val ChatInputField = Color(0xFFF3F0EC)
@@ -82,9 +78,7 @@ fun ChatScreen(
         mutableStateOf(appliedWallpaperId)
     }
     var showWallpaperPicker by remember(accountId, friendId) { mutableStateOf(false) }
-    val visibleWallpaper = ChatWallpaperCatalog.resolve(
-        if (showWallpaperPicker) previewWallpaperId else appliedWallpaperId
-    )
+    val appliedWallpaper = ChatWallpaperCatalog.resolve(appliedWallpaperId)
 
     BackHandler(onBack = onBack)
 
@@ -185,10 +179,10 @@ fun ChatScreen(
                         modifier = Modifier.size(52.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Rounded.PhotoLibrary,
+                            imageVector = Icons.Rounded.Palette,
                             contentDescription = "更換聊天室背景",
                             modifier = Modifier.size(28.dp),
-                            tint = ChatMine
+                            tint = appliedWallpaper.bubblePalette.ownBubbleColor
                         )
                     }
                 },
@@ -205,9 +199,13 @@ fun ChatScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        // HomeScreen's outer Scaffold already places this screen above the
+                        // system navigation bar. Consume that inset before retaining the
+                        // standalone ChatScreen safety modifiers below.
+                        .consumeWindowInsets(WindowInsets.navigationBars)
                         .navigationBarsPadding()
                         .imePadding()
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.Bottom
                 ) {
                     OutlinedTextField(
@@ -241,7 +239,7 @@ fun ChatScreen(
                     Surface(
                         modifier = Modifier.size(54.dp),
                         shape = CircleShape,
-                        color = ChatMine,
+                        color = appliedWallpaper.bubblePalette.ownBubbleColor,
                         shadowElevation = 2.dp
                     ) {
                         IconButton(
@@ -251,7 +249,7 @@ fun ChatScreen(
                             if (chat.sending) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(24.dp),
-                                    color = Color.White,
+                                    color = appliedWallpaper.bubblePalette.ownTextColor,
                                     strokeWidth = 2.dp
                                 )
                             } else {
@@ -259,7 +257,7 @@ fun ChatScreen(
                                     imageVector = Icons.AutoMirrored.Filled.Send,
                                     contentDescription = "送出訊息",
                                     modifier = Modifier.size(26.dp),
-                                    tint = Color.White
+                                    tint = appliedWallpaper.bubblePalette.ownTextColor
                                 )
                             }
                         }
@@ -269,7 +267,7 @@ fun ChatScreen(
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            ChatWallpaperBackground(visibleWallpaper)
+            ChatWallpaperBackground(appliedWallpaper)
             Column(modifier = Modifier.fillMaxSize()) {
                 chat.error?.let { ChatErrorCard(it) }
                 when {
@@ -310,7 +308,8 @@ fun ChatScreen(
                         items(items = chat.messages, key = { it.id }) { message ->
                             ChatMessageBubble(
                                 message = message,
-                                mine = message.senderId == accountId
+                                mine = message.senderId == accountId,
+                                palette = appliedWallpaper.bubblePalette
                             )
                         }
                     }
@@ -340,7 +339,11 @@ private fun ChatWallpaperBackground(wallpaper: ChatWallpaperOption) {
 }
 
 @Composable
-private fun ChatMessageBubble(message: ChatMessage, mine: Boolean) {
+private fun ChatMessageBubble(
+    message: ChatMessage,
+    mine: Boolean,
+    palette: ChatBubblePalette
+) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val bubbleMaxWidth = maxWidth * 0.76f
         Row(
@@ -350,7 +353,11 @@ private fun ChatMessageBubble(message: ChatMessage, mine: Boolean) {
             Column(horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
                 Surface(
                     modifier = Modifier.widthIn(max = bubbleMaxWidth),
-                    color = if (mine) ChatMine else ChatFriend.copy(alpha = 0.96f),
+                    color = if (mine) {
+                        palette.ownBubbleColor
+                    } else {
+                        palette.friendBubbleColor
+                    },
                     shape = RoundedCornerShape(
                         topStart = 20.dp,
                         topEnd = 20.dp,
@@ -366,7 +373,7 @@ private fun ChatMessageBubble(message: ChatMessage, mine: Boolean) {
                     Text(
                         text = message.content,
                         modifier = Modifier.padding(horizontal = 17.dp, vertical = 12.dp),
-                        color = if (mine) Color.White else ChatText,
+                        color = if (mine) palette.ownTextColor else palette.friendTextColor,
                         fontSize = 18.sp,
                         lineHeight = 26.sp
                     )
@@ -381,7 +388,7 @@ private fun ChatMessageBubble(message: ChatMessage, mine: Boolean) {
                         modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
-                        color = ChatSecondary
+                        color = palette.timestampColor
                     )
                 }
             }
@@ -425,9 +432,9 @@ private fun ChatEmptyState() {
         contentAlignment = Alignment.Center
     ) {
         Surface(
-            color = Color.White.copy(alpha = 0.9f),
+            color = Color.White.copy(alpha = 0.82f),
             shape = RoundedCornerShape(28.dp),
-            shadowElevation = 1.dp
+            shadowElevation = 0.dp
         ) {
             Column(
                 modifier = Modifier.padding(horizontal = 28.dp, vertical = 24.dp),
@@ -439,7 +446,7 @@ private fun ChatEmptyState() {
                     modifier = Modifier.size(38.dp),
                     tint = ChatAccent
                 )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(10.dp))
                 Text(
                     "還沒有訊息\n傳送第一則訊息吧！",
                     fontSize = 19.sp,
@@ -501,7 +508,7 @@ private fun ChatWallpaperPicker(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.72f)
+                .fillMaxHeight(0.92f)
                 .navigationBarsPadding()
                 .padding(horizontal = 20.dp)
         ) {
@@ -513,90 +520,45 @@ private fun ChatWallpaperPicker(
                 lineHeight = 23.sp,
                 color = ChatSecondary
             )
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(14.dp))
 
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
+            LazyColumn(
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(bottom = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                gridItems(items = ChatWallpaperCatalog.options, key = { it.id }) { wallpaper ->
-                    val isSelected = wallpaper.id == selectedWallpaperId
-                    Surface(
-                        onClick = { onWallpaperSelected(wallpaper.id) },
-                        modifier = Modifier.semantics {
-                            contentDescription = if (isSelected) {
-                                "${wallpaper.displayName}聊天室背景，已選取"
-                            } else {
-                                "${wallpaper.displayName}聊天室背景"
-                            }
-                            selected = isSelected
-                        },
-                        shape = RoundedCornerShape(20.dp),
-                        color = Color.White,
-                        border = BorderStroke(
-                            if (isSelected) 3.dp else 1.dp,
-                            if (isSelected) ChatAccent else ChatBorder
-                        ),
-                        shadowElevation = if (isSelected) 3.dp else 1.dp
-                    ) {
-                        Column {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(142.dp)
-                                    .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp))
-                                    .background(ChatCanvas),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                wallpaper.drawableRes?.let { drawableRes ->
-                                    Image(
-                                        painter = painterResource(drawableRes),
-                                        contentDescription = null,
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop
-                                    )
-                                    Box(
-                                        Modifier.fillMaxSize().background(
-                                            Color.White.copy(alpha = wallpaper.overlayAlpha)
-                                        )
-                                    )
-                                } ?: Icon(
-                                    Icons.Rounded.PhotoLibrary,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(42.dp),
-                                    tint = ChatMine.copy(alpha = 0.72f)
-                                )
+                item(key = "large_preview") {
+                    ChatWallpaperLargePreview(
+                        wallpaper = ChatWallpaperCatalog.resolve(selectedWallpaperId)
+                    )
+                }
 
-                                if (isSelected) {
-                                    Surface(
-                                        modifier = Modifier.align(Alignment.TopEnd).padding(9.dp),
-                                        shape = CircleShape,
-                                        color = Color.White,
-                                        shadowElevation = 2.dp
-                                    ) {
-                                        Icon(
-                                            Icons.Rounded.CheckCircle,
-                                            contentDescription = null,
-                                            modifier = Modifier.padding(3.dp).size(28.dp),
-                                            tint = ChatAccent
-                                        )
-                                    }
-                                }
-                            }
-                            Text(
-                                wallpaper.displayName,
-                                modifier = Modifier.fillMaxWidth()
-                                    .padding(horizontal = 10.dp, vertical = 11.dp),
-                                fontSize = 16.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = ChatText,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                item(key = "wallpaper_grid_title") {
+                    Text(
+                        "選擇背景",
+                        fontSize = 19.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = ChatText
+                    )
+                }
+
+                items(
+                    items = ChatWallpaperCatalog.options.chunked(2),
+                    key = { row -> row.joinToString(separator = "_") { it.id } }
+                ) { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        row.forEach { wallpaper ->
+                            ChatWallpaperThumbnail(
+                                wallpaper = wallpaper,
+                                isSelected = wallpaper.id == selectedWallpaperId,
+                                onClick = { onWallpaperSelected(wallpaper.id) },
+                                modifier = Modifier.weight(1f)
                             )
                         }
+                        if (row.size == 1) Spacer(Modifier.weight(1f))
                     }
                 }
             }
@@ -630,6 +592,194 @@ private fun ChatWallpaperPicker(
                     Text("套用背景", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ChatWallpaperLargePreview(wallpaper: ChatWallpaperOption) {
+    Box(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .width(180.dp)
+                .height(320.dp)
+                .clip(RoundedCornerShape(26.dp))
+                .background(ChatCanvas)
+                .semantics {
+                    contentDescription = "${wallpaper.displayName}聊天室背景大型預覽"
+                }
+        ) {
+            wallpaper.drawableRes?.let { drawableRes ->
+                Image(
+                    painter = painterResource(drawableRes),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+                Box(
+                    Modifier.fillMaxSize().background(
+                        Color.White.copy(alpha = wallpaper.overlayAlpha)
+                    )
+                )
+            }
+
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                WallpaperPreviewBubble(
+                    text = "您好！",
+                    mine = false,
+                    palette = wallpaper.bubblePalette
+                )
+                WallpaperPreviewBubble(
+                    text = "今天也要一起加油 😊",
+                    mine = true,
+                    palette = wallpaper.bubblePalette
+                )
+            }
+
+            Surface(
+                modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
+                color = Color.White.copy(alpha = 0.86f),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text(
+                    wallpaper.displayName,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                    color = ChatText,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WallpaperPreviewBubble(
+    text: String,
+    mine: Boolean,
+    palette: ChatBubblePalette
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start
+    ) {
+        Surface(
+            color = if (mine) {
+                palette.ownBubbleColor
+            } else {
+                palette.friendBubbleColor
+            },
+            shape = RoundedCornerShape(
+                topStart = 17.dp,
+                topEnd = 17.dp,
+                bottomEnd = if (mine) 5.dp else 17.dp,
+                bottomStart = if (mine) 17.dp else 5.dp
+            ),
+            border = if (mine) null else BorderStroke(
+                1.dp,
+                Color.White.copy(alpha = 0.85f)
+            ),
+            shadowElevation = 1.dp
+        ) {
+            Text(
+                text = text,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                color = if (mine) palette.ownTextColor else palette.friendTextColor,
+                fontSize = 16.sp,
+                lineHeight = 22.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChatWallpaperThumbnail(
+    wallpaper: ChatWallpaperOption,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier.semantics {
+            contentDescription = if (isSelected) {
+                "${wallpaper.displayName}聊天室背景，已選取"
+            } else {
+                "${wallpaper.displayName}聊天室背景"
+            }
+            selected = isSelected
+        },
+        shape = RoundedCornerShape(20.dp),
+        color = Color.White,
+        border = BorderStroke(
+            if (isSelected) 3.dp else 1.dp,
+            if (isSelected) ChatAccent else ChatBorder
+        ),
+        shadowElevation = if (isSelected) 3.dp else 1.dp
+    ) {
+        Column {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(142.dp)
+                    .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp))
+                    .background(ChatCanvas),
+                contentAlignment = Alignment.Center
+            ) {
+                wallpaper.drawableRes?.let { drawableRes ->
+                    Image(
+                        painter = painterResource(drawableRes),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                    Box(
+                        Modifier.fillMaxSize().background(
+                            Color.White.copy(alpha = wallpaper.overlayAlpha)
+                        )
+                    )
+                } ?: Icon(
+                    Icons.Rounded.Palette,
+                    contentDescription = null,
+                    modifier = Modifier.size(42.dp),
+                    tint = ChatMine.copy(alpha = 0.72f)
+                )
+
+                if (isSelected) {
+                    Surface(
+                        modifier = Modifier.align(Alignment.TopEnd).padding(9.dp),
+                        shape = CircleShape,
+                        color = Color.White,
+                        shadowElevation = 2.dp
+                    ) {
+                        Icon(
+                            Icons.Rounded.CheckCircle,
+                            contentDescription = null,
+                            modifier = Modifier.padding(3.dp).size(28.dp),
+                            tint = ChatAccent
+                        )
+                    }
+                }
+            }
+            Text(
+                wallpaper.displayName,
+                modifier = Modifier.fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 11.dp),
+                fontSize = 16.sp,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                color = ChatText,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
