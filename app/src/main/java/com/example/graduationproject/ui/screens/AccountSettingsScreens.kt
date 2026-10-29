@@ -22,6 +22,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -30,6 +34,7 @@ import com.example.graduationproject.ui.components.ProfileAvatar
 import com.example.graduationproject.profile.AvatarSource
 import com.example.graduationproject.ui.components.ScaleButton
 import com.example.graduationproject.ui.theme.scaledSp
+import com.example.graduationproject.ui.util.SingleActionGuard
 
 @Composable
 internal fun SwitchAccountScreen(
@@ -40,6 +45,7 @@ internal fun SwitchAccountScreen(
     onLoginAnotherAccount: () -> Unit,
     onNavigateBack: () -> Unit
 ) {
+    val switchAccountGuard = remember { SingleActionGuard() }
     SettingsScaffold(title = "切換帳號", onNavigateBack = onNavigateBack) { innerPadding ->
         LazyColumn(
             modifier = Modifier.padding(innerPadding).fillMaxSize(),
@@ -93,7 +99,9 @@ internal fun SwitchAccountScreen(
                         title = "使用其他帳號登入",
                         subtitle = "返回登入頁並登入其他帳號",
                         iconTint = androidx.compose.ui.graphics.Color(0xFF8E5BD9),
-                        onClick = onLoginAnotherAccount
+                        onClick = {
+                            if (switchAccountGuard.tryStart()) onLoginAnotherAccount()
+                        }
                     )
                 }
             }
@@ -153,6 +161,8 @@ private fun AccountInfoRow(icon: androidx.compose.ui.graphics.vector.ImageVector
 
 @Composable
 internal fun LogoutScreen(onConfirmLogout: () -> Unit, onNavigateBack: () -> Unit) {
+    val logoutGuard = remember { SingleActionGuard() }
+    var isLoggingOut by remember { mutableStateOf(false) }
     SettingsScaffold(title = "登出", onNavigateBack = onNavigateBack) { innerPadding ->
         Column(
             modifier = Modifier.padding(innerPadding).fillMaxSize().padding(24.dp),
@@ -174,8 +184,14 @@ internal fun LogoutScreen(onConfirmLogout: () -> Unit, onNavigateBack: () -> Uni
             )
             Spacer(Modifier.height(28.dp))
             ScaleButton(
-                onClick = onConfirmLogout,
-                text = "確定登出",
+                onClick = {
+                    if (logoutGuard.tryStart()) {
+                        isLoggingOut = true
+                        onConfirmLogout()
+                    }
+                },
+                text = if (isLoggingOut) "正在登出…" else "確定登出",
+                enabled = !isLoggingOut,
                 icon = Icons.AutoMirrored.Filled.Logout,
                 containerColor = SettingsPrimaryPeach,
                 minHeight = SettingsPrimaryCtaHeight

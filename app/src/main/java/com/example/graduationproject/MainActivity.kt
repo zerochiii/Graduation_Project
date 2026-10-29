@@ -275,42 +275,42 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
         }
 
         composable("survey") {
-            val coroutineScope = rememberCoroutineScope()
             val localContext = LocalContext.current
 
             SurveyScreen(
                 onComplete = { grade, score, hasFallRisk ->
-                    coroutineScope.launch {
-                        try {
-                            val request = com.example.graduationproject.DataClass.SaveAssessmentRequest(
-                                account_id = globalAccountId,
-                                sppb_score = score,
-                                grade = grade,
-                                has_fall_risk = hasFallRisk
+                    try {
+                        val request = com.example.graduationproject.DataClass.SaveAssessmentRequest(
+                            account_id = globalAccountId,
+                            sppb_score = score,
+                            grade = grade,
+                            has_fall_risk = hasFallRisk
+                        )
+
+                        val response = ApiClient.apiService.saveAssessment(request)
+
+                        val businessSuccessful = response.body()?.success == true
+                        if (shouldMarkAssessmentCompletionNoticePending(
+                                httpSuccessful = response.isSuccessful,
+                                businessSuccessful = businessSuccessful
                             )
-
-                            val response = ApiClient.apiService.saveAssessment(request)
-
-                            val businessSuccessful = response.body()?.success == true
-                            if (shouldMarkAssessmentCompletionNoticePending(
-                                    httpSuccessful = response.isSuccessful,
-                                    businessSuccessful = businessSuccessful
-                                )
-                            ) {
-                                assessmentNoticeViewModel.markPending(globalAccountId)
-                                Toast.makeText(localContext, "評估結果已成功紀錄", Toast.LENGTH_SHORT).show()
-                                userViewModel.updateAssessmentAfterSave(
-                                    accountId = globalAccountId,
-                                    grade = grade,
-                                    sppbScore = score
-                                )
-                                navController.popBackStack()
-                            } else {
-                                Toast.makeText(localContext, "儲存失敗：${response.body()?.message}", Toast.LENGTH_LONG).show()
-                            }
-                        } catch (e: Exception) {
-                            Toast.makeText(localContext, "網路連線異常：${e.message}", Toast.LENGTH_SHORT).show()
+                        ) {
+                            assessmentNoticeViewModel.markPending(globalAccountId)
+                            Toast.makeText(localContext, "評估結果已成功紀錄", Toast.LENGTH_SHORT).show()
+                            userViewModel.updateAssessmentAfterSave(
+                                accountId = globalAccountId,
+                                grade = grade,
+                                sppbScore = score
+                            )
+                            navController.popBackStack()
+                            true
+                        } else {
+                            Toast.makeText(localContext, "儲存失敗：${response.body()?.message}", Toast.LENGTH_LONG).show()
+                            false
                         }
+                    } catch (e: Exception) {
+                        Toast.makeText(localContext, "網路連線異常：${e.message}", Toast.LENGTH_SHORT).show()
+                        false
                     }
                 },
                 onNavigateBack = {
