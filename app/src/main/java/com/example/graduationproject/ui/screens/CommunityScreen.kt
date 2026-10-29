@@ -48,6 +48,7 @@ import com.example.graduationproject.profile.DEFAULT_PROFILE_AVATAR_COLOR_ID
 import com.example.graduationproject.profile.AvatarSource
 import com.example.graduationproject.ui.components.ProfileAvatar
 import com.example.graduationproject.ui.theme.GraduationProjectTheme
+import com.example.graduationproject.ui.util.SingleActionGuard
 import kotlinx.coroutines.launch
 import java.util.Calendar
 import kotlin.random.Random
@@ -81,39 +82,49 @@ fun CommunityScreen(
 
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
+    val friendActionGuard = remember { SingleActionGuard() }
+    var friendActionInProgress by remember { mutableStateOf(false) }
     val avatarColors = listOf(Color(0xFFCE93D8), Color(0xFF9FA8DA), Color(0xFF90CAF9), Color(0xFF80CBC4), Color(0xFFFFCC80))
 
-    val refreshData = {
+    suspend fun refreshData() {
         if (accountId > 0) {
-            coroutineScope.launch {
-                try {
-                    val response = ApiClient.apiService.getCommunityData(GetPointsRequest(accountId))
-                    if (response.isSuccessful && response.body()?.success == true) {
-                        val data = response.body()!!
-                        leaderboardList.clear()
-                        friendList.clear()
-                        pendingRequests.clear()
+            try {
+                val response = ApiClient.apiService.getCommunityData(GetPointsRequest(accountId))
+                if (response.isSuccessful && response.body()?.success == true) {
+                    val data = response.body()!!
+                    leaderboardList.clear()
+                    friendList.clear()
+                    pendingRequests.clear()
 
-                        leaderboardList.addAll(data.leaderboard.map { it.copy(avatarColor = avatarColors[Random.nextInt(avatarColors.size)]) })
-                        friendList.addAll(data.friends.map { it.copy(avatarColor = avatarColors[Random.nextInt(avatarColors.size)]) })
-                        pendingRequests.addAll(data.pendingRequests.map { it.copy(senderAvatarColor = avatarColors[Random.nextInt(avatarColors.size)]) })
-                    }
-                } catch (e: Exception) { e.printStackTrace() }
+                    leaderboardList.addAll(data.leaderboard.map { it.copy(avatarColor = avatarColors[Random.nextInt(avatarColors.size)]) })
+                    friendList.addAll(data.friends.map { it.copy(avatarColor = avatarColors[Random.nextInt(avatarColors.size)]) })
+                    pendingRequests.addAll(data.pendingRequests.map { it.copy(senderAvatarColor = avatarColors[Random.nextInt(avatarColors.size)]) })
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }
 
     val sendAction: (String, Int?, String?) -> Unit = { actionStr, target, phoneStr ->
-        coroutineScope.launch {
-            try {
-                val response = ApiClient.apiService.handleFriendAction(
-                    FriendActionRequest(accountId = accountId, action = actionStr, targetId = target, phone = phoneStr)
-                )
-                if (response.isSuccessful) {
-                    Toast.makeText(context, response.body()?.message ?: "操作成功", Toast.LENGTH_SHORT).show()
-                    refreshData()
+        if (friendActionGuard.tryStart()) {
+            friendActionInProgress = true
+            coroutineScope.launch {
+                try {
+                    val response = ApiClient.apiService.handleFriendAction(
+                        FriendActionRequest(accountId = accountId, action = actionStr, targetId = target, phone = phoneStr)
+                    )
+                    if (response.isSuccessful) {
+                        Toast.makeText(context, response.body()?.message ?: "操作成功", Toast.LENGTH_SHORT).show()
+                        refreshData()
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(context, "網路連線失敗", Toast.LENGTH_SHORT).show()
+                } finally {
+                    friendActionInProgress = false
+                    friendActionGuard.finish()
                 }
-            } catch (e: Exception) { Toast.makeText(context, "網路連線失敗", Toast.LENGTH_SHORT).show() }
+            }
         }
     }
 
@@ -187,12 +198,14 @@ fun CommunityScreen(
                 currentUserAvatarSource = currentUserAvatarSource,
                 dateRangeStr = dateRangeStr,
                 leaderboardList = leaderboardList,
+                actionsEnabled = !friendActionInProgress,
                 onAction = sendAction
             )
         } else {
             FriendsTab(
                 friendList = friendList,
                 pendingRequests = pendingRequests,
+                actionsEnabled = !friendActionInProgress,
                 onAction = sendAction,
                 onOpenChat = { friend ->
                     selectedChatFriend = friend
@@ -210,6 +223,7 @@ fun LeaderboardTab(
     currentUserAvatarSource: AvatarSource,
     dateRangeStr: String,
     leaderboardList: List<CommunityUser>,
+    actionsEnabled: Boolean,
     onAction: (String, Int?, String?) -> Unit
 ) {
     Column {
@@ -253,6 +267,7 @@ fun LeaderboardTab(
                         displayedUserId = displayedUser.id,
                         currentUserAvatarSource = currentUserAvatarSource
                     ),
+                    actionsEnabled = actionsEnabled,
                     onAddFriend = { onAction("send", displayedUser.id.toInt(), null) },
                     onDeleteFriend = { onAction("delete", displayedUser.id.toInt(), null) }
                 )
@@ -265,6 +280,7 @@ fun LeaderboardTab(
 fun FriendsTab(
     friendList: List<CommunityUser>,
     pendingRequests: List<FriendRequest>,
+    actionsEnabled: Boolean,
     onAction: (String, Int?, String?) -> Unit,
     onOpenChat: (CommunityUser) -> Unit
 ){
@@ -279,12 +295,15 @@ fun FriendsTab(
                     placeholder = { Text(text = "輸入完整手機號碼以傳送好友邀請", fontSize = 18.sp) },
                     modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), singleLine = true,
                     trailingIcon = {
-                        IconButton(onClick = {
-                            if (searchQuery.isNotEmpty()) {
-                                onAction("send_by_phone", null, searchQuery)
-                                searchQuery = ""
-                            }
-                        }) { Icon(imageVector = Icons.AutoMirrored.Filled.Send, contentDescription = "搜尋", tint = PrimaryPeach) }
+                        IconButton(
+                            onClick = {
+                                if (searchQuery.isNotEmpty()) {
+                                    onAction("send_by_phone", null, searchQuery)
+                                    searchQuery = ""
+                                }
+                            },
+                            enabled = actionsEnabled
+                        ) { Icon(imageVector = Icons.AutoMirrored.Filled.Send, contentDescription = "搜尋", tint = PrimaryPeach) }
                     },
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = PrimaryPeach, unfocusedBorderColor = TextSub.copy(alpha = 0.3f))
                 )
@@ -296,6 +315,7 @@ fun FriendsTab(
             items(pendingRequests) { request ->
                 FriendRequestCard(
                     request = request,
+                    actionsEnabled = actionsEnabled,
                     onAccept = { onAction("accept", request.id.toInt(), null) },
                     onReject = { onAction("reject", request.id.toInt(), null) }
                 )
@@ -315,6 +335,7 @@ fun FriendsTab(
                 CommunityUserCard(
                     user = friend,
                     isMe = false,
+                    actionsEnabled = actionsEnabled,
                     onAddFriend = {},
                     onDeleteFriend = {
                         onAction("delete", friend.id.toInt(), null)
@@ -356,6 +377,7 @@ fun SectionTitle(
 @Composable
 fun FriendRequestCard(
     request: FriendRequest,
+    actionsEnabled: Boolean,
     onAccept: () -> Unit,
     onReject: () -> Unit
 ) {
@@ -405,6 +427,7 @@ fun FriendRequestCard(
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 FilledTonalButton(
                     onClick = onReject,
+                    enabled = actionsEnabled,
                     colors = ButtonDefaults.filledTonalButtonColors(
                         containerColor = Color(0xFFEEEEEE),
                         contentColor = TextSub
@@ -422,6 +445,7 @@ fun FriendRequestCard(
 
                 Button(
                     onClick = onAccept,
+                    enabled = actionsEnabled,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = PrimaryPeach,
                         contentColor = Color.White
@@ -504,6 +528,7 @@ fun CommunityUserCard(
     avatarId: String? = null,
     avatarColorId: String? = null,
     avatarSource: AvatarSource? = null,
+    actionsEnabled: Boolean = true,
     onAddFriend: () -> Unit,
     onDeleteFriend: () -> Unit,
     onOpenChat: (() -> Unit)? = null
@@ -522,10 +547,13 @@ fun CommunityUserCard(
             title = { Text(text = "刪除好友", fontWeight = FontWeight.Bold) },
             text = { Text("確定要將 ${user.name} 從好友名單中移除嗎？") },
             confirmButton = {
-                TextButton(onClick = {
-                    stableOnDelete.value()
-                    showDeleteConfirmDialog = false
-                }) {
+                TextButton(
+                    onClick = {
+                        stableOnDelete.value()
+                        showDeleteConfirmDialog = false
+                    },
+                    enabled = actionsEnabled
+                ) {
                     Text("確定刪除", color = Color.Red, fontWeight = FontWeight.Bold)
                 }
             },
@@ -545,6 +573,7 @@ fun CommunityUserCard(
             avatarId = avatarId,
             avatarColorId = avatarColorId,
             avatarSource = avatarSource,
+            actionsEnabled = actionsEnabled,
             onOpenChat = onOpenChat,
             onDeleteFriend = { showDeleteConfirmDialog = true }
         )
@@ -670,6 +699,7 @@ fun CommunityUserCard(
                     else -> {
                         Button(
                             onClick = onAddFriend,
+                            enabled = actionsEnabled,
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = PrimaryPeach.copy(alpha = 0.1f),
                                 contentColor = PrimaryPeach
@@ -702,6 +732,7 @@ private fun FriendCommunityUserCard(
     avatarId: String?,
     avatarColorId: String?,
     avatarSource: AvatarSource?,
+    actionsEnabled: Boolean,
     onOpenChat: () -> Unit,
     onDeleteFriend: () -> Unit
 ) {
@@ -829,6 +860,7 @@ private fun FriendCommunityUserCard(
 
                     IconButton(
                         onClick = onDeleteFriend,
+                        enabled = actionsEnabled,
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .size(48.dp)

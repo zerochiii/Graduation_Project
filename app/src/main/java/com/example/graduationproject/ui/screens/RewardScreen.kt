@@ -24,6 +24,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.graduationproject.ui.theme.GraduationProjectTheme
+import com.example.graduationproject.ui.util.SingleActionGuard
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.platform.LocalContext
@@ -62,6 +63,7 @@ fun RewardScreen(accountId: Int, currentPoints: Int, onPointsUpdated: (Int) -> U
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     var redeemingId by remember { mutableStateOf<Int?>(null) }
+    val redeemGuard = remember { SingleActionGuard() }
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
 
@@ -152,9 +154,11 @@ fun RewardScreen(accountId: Int, currentPoints: Int, onPointsUpdated: (Int) -> U
                             item = item,
                             currentPoints = currentPoints,
                             isLoading = redeemingId == item.id,
+                            actionEnabled = redeemingId == null,
                             onRedeemClick = {
+                                if (!redeemGuard.tryStart()) return@RewardCard
+                                redeemingId = item.id
                                 coroutineScope.launch {
-                                    redeemingId = item.id
                                     try {
                                         val request = com.example.graduationproject.DataClass.RedeemRequest(
                                             account_id = accountId,
@@ -181,6 +185,7 @@ fun RewardScreen(accountId: Int, currentPoints: Int, onPointsUpdated: (Int) -> U
                                         }
                                     } finally {
                                         redeemingId = null
+                                        redeemGuard.finish()
                                     }
                                 }
                             }
@@ -386,6 +391,7 @@ fun RewardCard(
     item: RewardItem,
     currentPoints: Int,
     isLoading: Boolean,
+    actionEnabled: Boolean,
     onRedeemClick: () -> Unit
 ) {
     val canAfford = currentPoints >= item.points && item.quantity > 0
@@ -459,7 +465,7 @@ fun RewardCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp),
-                enabled = canAfford,
+                enabled = canAfford && actionEnabled,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = PrimaryPeach,
                     contentColor = Color.White,

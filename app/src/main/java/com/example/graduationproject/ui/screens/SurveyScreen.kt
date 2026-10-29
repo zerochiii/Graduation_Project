@@ -21,6 +21,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.graduationproject.ui.theme.GraduationProjectTheme
 import com.example.graduationproject.ui.theme.scaledSp
+import com.example.graduationproject.ui.util.SingleActionGuard
+import kotlinx.coroutines.launch
 
 private val BeigeBg = Color(0xFFFDFCF9)
 private val PrimaryPeach = Color(0xFFFF8A65)
@@ -29,13 +31,18 @@ private val TextMain = Color(0xFF201A18)
 
 @Composable
 fun SurveyScreen(
-    onNavigateBack: () -> Unit,
-    onComplete: (grade: String, score: Int, hasFallRisk: Boolean) -> Unit,
+    onNavigateBack: () -> Boolean,
+    onComplete: suspend (grade: String, score: Int, hasFallRisk: Boolean) -> Boolean,
     viewModel: SurveyViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val finalGrade = uiState.finalGrade
     val finalScore = uiState.finalScore
+    val coroutineScope = rememberCoroutineScope()
+    val leaveGuard = remember { SingleActionGuard() }
+    val completionGuard = remember { SingleActionGuard() }
+    var isLeaving by remember { mutableStateOf(false) }
+    var isSubmittingResult by remember { mutableStateOf(false) }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -46,15 +53,32 @@ fun SurveyScreen(
                 uiState = uiState,
                 grade = finalGrade,
                 score = finalScore,
+                isSubmitting = isSubmittingResult,
                 onComplete = {
-                    onComplete(finalGrade, finalScore, uiState.hasFallRisk)
+                    if (!completionGuard.tryStart()) return@ResultContent
+                    isSubmittingResult = true
+                    coroutineScope.launch {
+                        val completed = onComplete(finalGrade, finalScore, uiState.hasFallRisk)
+                        if (!completed) {
+                            completionGuard.finish()
+                            isSubmittingResult = false
+                        }
+                    }
                 }
             )
         } else {
             AssessmentContent(
                 viewModel = viewModel,
                 uiState = uiState,
-                onBack = onNavigateBack
+                isLeaving = isLeaving,
+                onBack = {
+                    if (!leaveGuard.tryStart()) return@AssessmentContent
+                    isLeaving = true
+                    if (!onNavigateBack()) {
+                        leaveGuard.finish()
+                        isLeaving = false
+                    }
+                }
             )
         }
     }
@@ -64,6 +88,7 @@ fun SurveyScreen(
 fun AssessmentContent(
     viewModel: SurveyViewModel,
     uiState: SurveyUiState,
+    isLeaving: Boolean,
     onBack: () -> Unit
 ) {
     val step = viewModel.currentStep
@@ -159,12 +184,21 @@ fun AssessmentContent(
 
                 TextButton(
                     onClick = onBack,
+                    enabled = !isLeaving,
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 48.dp)
                 ) {
+                    if (isLeaving) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = TextMain.copy(alpha = 0.4f)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
                     Text(
-                        text = "暫時離開並儲存進度",
+                        text = if (isLeaving) "正在離開…" else "暫時離開並儲存進度",
                         fontSize = 18.scaledSp(),
                         color = TextMain.copy(alpha = 0.4f),
                         textAlign = TextAlign.Center
@@ -315,6 +349,7 @@ fun ResultContent(
     uiState: SurveyUiState,
     grade: String,
     score: Int,
+    isSubmitting: Boolean,
     onComplete: () -> Unit
 ) {
     Column(
@@ -386,13 +421,26 @@ fun ResultContent(
 
         Button(
             onClick = onComplete,
+            enabled = !isSubmitting,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(72.dp),
             shape = RoundedCornerShape(24.dp),
             colors = ButtonDefaults.buttonColors(containerColor = SecondaryTeal)
         ) {
-            Text("返回首頁", fontSize = 22.scaledSp(), fontWeight = FontWeight.Bold)
+            if (isSubmitting) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    strokeWidth = 2.dp,
+                    color = Color.White
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+            }
+            Text(
+                if (isSubmitting) "正在儲存…" else "返回首頁",
+                fontSize = 22.scaledSp(),
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }
