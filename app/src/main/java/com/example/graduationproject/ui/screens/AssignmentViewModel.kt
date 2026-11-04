@@ -57,7 +57,6 @@ class AssignmentViewModel(application: Application) : AndroidViewModel(applicati
     private var recordDate = todayString()
     private var exerciseCounts: Map<String, Int> = emptyMap()
     private var completedIds: Set<String> = emptySet()
-    private var currentRound = 1
     private var recordsReady = false
     private var recordsLoading = false
     private var recordsError: String? = null
@@ -115,26 +114,15 @@ class AssignmentViewModel(application: Application) : AndroidViewModel(applicati
             ?.let(::normalizeCode)
     }
 
-    private fun calculateRoundProgress(): Pair<Set<String>, Int> {
-        val plan = getRunnablePlan() ?: return emptySet<String>() to 1
-        val mappedExercises = plan.exercises.mapNotNull { exercise ->
-            val code = getExerciseCode(exercise.id) ?: return@mapNotNull null
-            exercise.id to code
-        }
-        if (mappedExercises.isEmpty()) return emptySet<String>() to 1
-
-        val finishedRounds = mappedExercises.minOf { (_, code) ->
-            exerciseCounts[code] ?: 0
-        }
-
-        val completedInCurrentRound = mappedExercises
-            .filter { (_, code) ->
-                (exerciseCounts[code] ?: 0) > finishedRounds
+    private fun calculateCompletedIds(): Set<String> {
+        return getRunnablePlan()?.exercises
+            ?.filter { exercise ->
+                val code = getExerciseCode(exercise.id) ?: return@filter false
+                (exerciseCounts[code] ?: 0) > 0
             }
-            .map { (exerciseId, _) -> exerciseId }
-            .toSet()
-
-        return completedInCurrentRound to (finishedRounds + 1)
+            ?.map { exercise -> exercise.id }
+            ?.toSet()
+            ?: emptySet()
     }
 
     private fun currentExerciseId(): String? {
@@ -153,12 +141,9 @@ class AssignmentViewModel(application: Application) : AndroidViewModel(applicati
         }
 
         if (recordsReady) {
-            val progress = calculateRoundProgress()
-            completedIds = progress.first
-            currentRound = progress.second
+            completedIds = calculateCompletedIds()
         } else {
             completedIds = emptySet()
-            currentRound = 1
         }
 
         val displayPlan = getDisplayPlan()
@@ -188,7 +173,7 @@ class AssignmentViewModel(application: Application) : AndroidViewModel(applicati
 
         Log.d(
             TAG,
-            "account=$accountId, day=$day, week=$week, round=$currentRound, " +
+            "account=$accountId, day=$day, week=$week, " +
                     "counts=$exerciseCounts, completed=$completedIds, next=$nextExerciseId, " +
                     "loading=$recordsLoading, error=$recordsError"
         )
@@ -210,7 +195,6 @@ class AssignmentViewModel(application: Application) : AndroidViewModel(applicati
             requestGeneration++
             exerciseCounts = emptyMap()
             completedIds = emptySet()
-            currentRound = 1
             recordsReady = false
             recordsLoading = false
             recordsError = null
@@ -345,7 +329,6 @@ class AssignmentViewModel(application: Application) : AndroidViewModel(applicati
         if (currentExerciseId() != exerciseId) return false
 
         val resultCode = getExerciseCode(exerciseId) ?: return false
-        val oldRound = currentRound
 
         exerciseCounts = exerciseCounts + (
                 resultCode to ((exerciseCounts[resultCode] ?: 0) + 1)
@@ -353,17 +336,10 @@ class AssignmentViewModel(application: Application) : AndroidViewModel(applicati
 
         refreshUiState()
 
-        if (currentRound > oldRound) {
-            Log.d(
-                TAG,
-                "第 $oldRound 輪訓練全部完成，開始第 $currentRound 輪"
-            )
-        } else {
-            Log.d(
-                TAG,
-                "完成任務 $exerciseId，下一項=${currentExerciseId()}"
-            )
-        }
+        Log.d(
+            TAG,
+            "完成任務 $exerciseId，下一項=${currentExerciseId()}"
+        )
 
         reloadCompletedRecords()
         return true
@@ -382,7 +358,6 @@ class AssignmentViewModel(application: Application) : AndroidViewModel(applicati
         recordDate = todayString()
         exerciseCounts = emptyMap()
         completedIds = emptySet()
-        currentRound = 1
         recordsReady = false
         recordsLoading = false
         recordsError = null

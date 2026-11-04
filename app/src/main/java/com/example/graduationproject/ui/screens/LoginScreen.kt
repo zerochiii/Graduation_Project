@@ -24,6 +24,7 @@ import com.example.graduationproject.R
 import com.example.graduationproject.api.ApiClient
 import com.example.graduationproject.ui.components.ScaleButton
 import com.example.graduationproject.ui.theme.GraduationProjectTheme
+import com.example.graduationproject.ui.util.SingleActionGuard
 import kotlinx.coroutines.launch
 import android.content.Context
 
@@ -49,6 +50,8 @@ fun LoginScreen(
     var isLoading by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
+    val loginGuard = remember { SingleActionGuard() }
+    val navigationGuard = remember { SingleActionGuard() }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -164,7 +167,12 @@ fun LoginScreen(
                 modifier = Modifier.fillMaxWidth(),
                 contentAlignment = Alignment.CenterEnd
             ) {
-                TextButton(onClick = onNavigateToForgotPassword) {
+                TextButton(
+                    onClick = {
+                        if (navigationGuard.tryStart()) onNavigateToForgotPassword()
+                    },
+                    enabled = !isLoading
+                ) {
                     Text(
                         text = "忘記密碼？",
                         color = TextMain.copy(alpha = 0.6f),
@@ -180,9 +188,12 @@ fun LoginScreen(
                 onClick = {
                     if (account.isEmpty() || password.isEmpty()) {
                         errorMessage = "帳號或密碼不能為空"
+                    } else if (!loginGuard.tryStart()) {
+                        return@ScaleButton
                     } else {
                         isLoading = true
                         coroutineScope.launch {
+                            var loginSucceeded = false
                             try {
                                 val loginRequest = com.example.graduationproject.DataClass.LoginRequest(
                                     username = account,
@@ -199,6 +210,7 @@ fun LoginScreen(
                                         .edit()
                                         .putString("CHAT_TOKEN", body.data?.chatToken.orEmpty())
                                         .apply()
+                                    loginSucceeded = true
                                     onLoginSuccess(safeRole, realAccountId)
                                 } else {
                                     /*
@@ -226,12 +238,16 @@ fun LoginScreen(
                                 Log.e("LoginError", "連線失敗的真正原因：", e)
                                 errorMessage = "網路連線失敗，請檢查網路"
                             } finally {
-                                isLoading = false
+                                if (!loginSucceeded) {
+                                    isLoading = false
+                                    loginGuard.finish()
+                                }
                             }
                         }
                     }
                 },
-                text = "登入",
+                text = if (isLoading) "登入中…" else "登入",
+                enabled = !isLoading,
                 contentDescription = "登入按鈕"
             )
 
@@ -239,7 +255,10 @@ fun LoginScreen(
 
             // 前往註冊連結
             TextButton(
-                onClick = onNavigateToRegister,
+                onClick = {
+                    if (navigationGuard.tryStart()) onNavigateToRegister()
+                },
+                enabled = !isLoading,
                 modifier = Modifier.heightIn(min = 48.dp)
             ) {
                 Text(

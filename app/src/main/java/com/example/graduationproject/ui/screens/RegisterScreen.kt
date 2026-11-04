@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.graduationproject.ui.components.ScaleButton
 import com.example.graduationproject.ui.theme.GraduationProjectTheme
+import com.example.graduationproject.ui.util.SingleActionGuard
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.example.graduationproject.api.ApiClient
@@ -128,6 +129,9 @@ fun RegisterScreen(
 
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
+    val otpSendGuard = remember { SingleActionGuard() }
+    val registerGuard = remember { SingleActionGuard() }
+    val navigationGuard = remember { SingleActionGuard() }
 
     LaunchedEffect(verificationCode) {
         if (verificationCode.length == 6 && !isCodeVerified && !isVerifyingCode) {
@@ -229,6 +233,7 @@ fun RegisterScreen(
                     TextButton(
                         onClick = {
                             if (isEmailValid && !isEmailError) {
+                                if (!otpSendGuard.tryStart()) return@TextButton
                                 isCodeSent = true
                                 isCodeVerified = false
                                 timeLeft = 120
@@ -245,6 +250,8 @@ fun RegisterScreen(
                                         }
                                     } catch (e: Exception) {
                                         Toast.makeText(context, "網路異常，發送失敗", Toast.LENGTH_SHORT).show()
+                                    } finally {
+                                        otpSendGuard.finish()
                                     }
                                 }
                             }
@@ -383,9 +390,12 @@ fun RegisterScreen(
                         errorMessage = "電話號碼格式錯誤"
                     } else if (password != confirmPassword) {
                         errorMessage = "兩次密碼輸入不一致"
+                    } else if (!registerGuard.tryStart()) {
+                        return@ScaleButton
                     } else {
                         isLoading = true
                         coroutineScope.launch {
+                            var registrationSucceeded = false
                             try {
                                 val request = com.example.graduationproject.DataClass.RegisterElderRequest(
                                     name = name,
@@ -398,6 +408,7 @@ fun RegisterScreen(
 
                                 if (response.isSuccessful && response.body()?.success == true) {
                                     Toast.makeText(context, "註冊成功！", Toast.LENGTH_SHORT).show()
+                                    registrationSucceeded = true
                                     onNavigateBackToLogin()
                                 } else {
                                     val realErrorMessage = try {
@@ -413,7 +424,10 @@ fun RegisterScreen(
                             } catch (e: Exception) {
                                 errorMessage = "網路異常：${e.message}"
                             } finally {
-                                isLoading = false
+                                if (!registrationSucceeded) {
+                                    isLoading = false
+                                    registerGuard.finish()
+                                }
                             }
                         }
                     }
@@ -435,7 +449,13 @@ fun RegisterScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            TextButton(onClick = onNavigateBackToLogin, modifier = Modifier.heightIn(min = 48.dp)) {
+            TextButton(
+                onClick = {
+                    if (navigationGuard.tryStart()) onNavigateBackToLogin()
+                },
+                enabled = !isLoading,
+                modifier = Modifier.heightIn(min = 48.dp)
+            ) {
                 Text(text = "已有帳號？ 返回登入", color = SecondaryTeal, fontWeight = FontWeight.Bold, fontSize = 18.sp)
             }
         }

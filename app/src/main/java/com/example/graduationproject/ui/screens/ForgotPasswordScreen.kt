@@ -32,6 +32,7 @@ import com.example.graduationproject.DataClass.ResetPasswordRequest
 import com.example.graduationproject.api.ApiClient
 import com.example.graduationproject.ui.components.ScaleButton
 import com.example.graduationproject.ui.theme.GraduationProjectTheme
+import com.example.graduationproject.ui.util.SingleActionGuard
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -64,6 +65,9 @@ fun ForgotPasswordScreen(
 
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
+    val otpSendGuard = remember { SingleActionGuard() }
+    val resetGuard = remember { SingleActionGuard() }
+    val navigationGuard = remember { SingleActionGuard() }
 
     LaunchedEffect(verificationCode) {
         if (verificationCode.length == 6 && !isCodeVerified && !isVerifyingCode) {
@@ -163,6 +167,7 @@ fun ForgotPasswordScreen(
                     TextButton(
                         onClick = {
                             if (isEmailValid && !isEmailError) {
+                                if (!otpSendGuard.tryStart()) return@TextButton
                                 isCodeSent = true
                                 isCodeVerified = false
                                 timeLeft = 120
@@ -185,6 +190,8 @@ fun ForgotPasswordScreen(
                                         }
                                     } catch (e: Exception) {
                                         Toast.makeText(context, "網路異常，發送失敗", Toast.LENGTH_SHORT).show()
+                                    } finally {
+                                        otpSendGuard.finish()
                                     }
                                 }
                             }
@@ -328,9 +335,12 @@ fun ForgotPasswordScreen(
                         errorMessage = "請先完成信箱驗證"
                     } else if (newPassword != confirmPassword) {
                         errorMessage = "兩次密碼輸入不一致"
+                    } else if (!resetGuard.tryStart()) {
+                        return@ScaleButton
                     } else {
                         isLoading = true
                         coroutineScope.launch {
+                            var resetSucceeded = false
                             try {
                                 val request = ResetPasswordRequest(
                                     email = email,
@@ -340,6 +350,7 @@ fun ForgotPasswordScreen(
 
                                 if (response.isSuccessful && response.body()?.success == true) {
                                     Toast.makeText(context, "密碼重設成功！", Toast.LENGTH_SHORT).show()
+                                    resetSucceeded = true
                                     onResetSuccess()
                                 } else {
                                     val realErrorMessage = try {
@@ -353,7 +364,10 @@ fun ForgotPasswordScreen(
                             } catch (e: Exception) {
                                 errorMessage = "網路異常，請稍後再試"
                             } finally {
-                                isLoading = false
+                                if (!resetSucceeded) {
+                                    isLoading = false
+                                    resetGuard.finish()
+                                }
                             }
                         }
                     }
@@ -366,7 +380,10 @@ fun ForgotPasswordScreen(
             Spacer(modifier = Modifier.height(20.dp))
 
             TextButton(
-                onClick = onNavigateBackToLogin,
+                onClick = {
+                    if (navigationGuard.tryStart()) onNavigateBackToLogin()
+                },
+                enabled = !isLoading,
                 modifier = Modifier.heightIn(min = 48.dp)
             ) {
                 Text(
