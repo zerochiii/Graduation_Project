@@ -206,10 +206,13 @@ fun LoginScreen(
                                     val safeRole = body.data?.role ?: "elder"
                                     val realAccountId = body.data?.account_id ?: 0
 
-                                    context.getSharedPreferences("ElderCarePrefs", Context.MODE_PRIVATE)
-                                        .edit()
-                                        .putString("CHAT_TOKEN", body.data?.chatToken.orEmpty())
-                                        .apply()
+                                    if (realAccountId>0 && !body.data?.chatToken.isNullOrBlank()) {
+                                        runCatching {
+                                            com.example.graduationproject.profile.RememberedAccounts(context).save(
+                                                com.example.graduationproject.profile.RememberedAccount(realAccountId,body.data?.name.orEmpty(),body.data!!.chatToken!!)
+                                            )
+                                        }
+                                    }
                                     loginSucceeded = true
                                     onLoginSuccess(safeRole, realAccountId)
                                 } else {

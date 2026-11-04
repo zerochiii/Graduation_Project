@@ -38,6 +38,7 @@ enum class LocalImageSource {
 sealed interface AvatarSource {
     data class Preset(val avatarId: String) : AvatarSource
     data class LocalImage(val path: String, val sourceType: LocalImageSource) : AvatarSource
+    data class RemoteImage(val url:String) : AvatarSource
 }
 
 internal enum class AvatarCategory(val displayName: String) {
@@ -107,6 +108,7 @@ internal class SharedPreferencesProfileSettingsStore(
 ) : ProfileSettingsStore {
     override fun readAvatarSource(accountId: Int): AvatarSource? {
         return when (preferences.getString("PROFILE_AVATAR_KIND_$accountId", null)) {
+            "REMOTE" -> preferences.getString("PROFILE_AVATAR_REMOTE_$accountId",null)?.let(AvatarSource::RemoteImage)
             "LOCAL" -> {
                 val path = preferences.getString("PROFILE_AVATAR_LOCAL_PATH_$accountId", null)
                 val sourceType = preferences.getString("PROFILE_AVATAR_LOCAL_SOURCE_$accountId", null)
@@ -133,6 +135,9 @@ internal class SharedPreferencesProfileSettingsStore(
                 .putString("PROFILE_AVATAR_$accountId", source.avatarId)
                 .remove("PROFILE_AVATAR_LOCAL_PATH_$accountId")
                 .remove("PROFILE_AVATAR_LOCAL_SOURCE_$accountId")
+            is AvatarSource.RemoteImage -> editor
+                .putString("PROFILE_AVATAR_KIND_$accountId","REMOTE")
+                .putString("PROFILE_AVATAR_REMOTE_$accountId",source.url)
             is AvatarSource.LocalImage -> editor
                 .putString("PROFILE_AVATAR_KIND_$accountId", "LOCAL")
                 .putString("PROFILE_AVATAR_LOCAL_PATH_$accountId", source.path)
@@ -191,6 +196,7 @@ internal class ProfileCustomizationViewModel(
         val storedSource = settingsStore.readAvatarSource(accountId)
         val avatarSource = when (storedSource) {
             is AvatarSource.Preset -> AvatarSource.Preset(AvatarCatalog.find(storedSource.avatarId).id)
+            is AvatarSource.RemoteImage -> storedSource
             is AvatarSource.LocalImage -> storedSource.takeIf {
                 avatarFiles.isSavedImageAvailable(accountId, it)
             } ?: AvatarSource.Preset(DEFAULT_PROFILE_AVATAR_ID)
@@ -212,6 +218,16 @@ internal class ProfileCustomizationViewModel(
         )
     }
 
+    fun applyRemoteProfile(accountId:Int,profile:com.example.graduationproject.DataClass.RemoteProfile) {
+        if (uiState.accountId!=accountId) return
+        val source=if (profile.avatarKind=="image") {
+            AvatarSource.RemoteImage(com.example.graduationproject.api.ApiClient.retrofit.baseUrl().toString()+"api/profile_image.php?id=$accountId&v=${profile.avatarVersion}")
+        } else AvatarSource.Preset(AvatarCatalog.find(profile.avatarId).id)
+        settingsStore.writeAvatar(accountId,source,profile.avatarColor)
+        settingsStore.writeDisplayName(accountId,profile.name)
+        uiState=uiState.copy(avatarSource=source,avatarColorId=profile.avatarColor,customDisplayName=profile.name,accountName=profile.name,errorMessage=null)
+    }
+
     fun updateAccountName(accountId: Int, accountName: String) {
         if (uiState.accountId == accountId) {
             uiState = uiState.copy(accountName = accountName.trim().takeIf { it.isNotEmpty() })
@@ -228,6 +244,7 @@ internal class ProfileCustomizationViewModel(
 
         val persistedSource = when (source) {
             is AvatarSource.Preset -> source
+            is AvatarSource.RemoteImage -> source
             is AvatarSource.LocalImage -> {
                 if (avatarFiles.isSavedImageAvailable(accountId, source)) source
                 else avatarFiles.persistCandidate(accountId, source).getOrElse {

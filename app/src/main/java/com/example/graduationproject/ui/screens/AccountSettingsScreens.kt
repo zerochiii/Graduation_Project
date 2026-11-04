@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.rounded.AccountCircle
@@ -32,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.graduationproject.ui.components.ProfileAvatar
 import com.example.graduationproject.profile.AvatarSource
+import com.example.graduationproject.profile.RememberedAccount
 import com.example.graduationproject.ui.components.ScaleButton
 import com.example.graduationproject.ui.theme.scaledSp
 import com.example.graduationproject.ui.util.SingleActionGuard
@@ -43,6 +45,9 @@ internal fun SwitchAccountScreen(
     avatarColorId: String,
     avatarSource: AvatarSource = AvatarSource.Preset(avatarId),
     onLoginAnotherAccount: () -> Unit,
+    rememberedAccounts:List<RememberedAccount> = emptyList(),
+    currentAccountId:Int = -1,
+    onSwitchAccount:(RememberedAccount)->Unit = {},
     onNavigateBack: () -> Unit
 ) {
     val switchAccountGuard = remember { SingleActionGuard() }
@@ -91,6 +96,18 @@ internal fun SwitchAccountScreen(
                     }
                 }
             }
+            item { SettingsSectionTitle("曾登入的帳號") }
+            items(rememberedAccounts.filter { it.id!=currentAccountId },key={ "remembered_${it.id}" }) { saved ->
+                SettingsCard {
+                    SettingsNavigationRow(
+                        icon=Icons.Rounded.AccountCircle,
+                        title=saved.name.ifBlank { "帳號 ${saved.id}" },
+                        subtitle="點選快速切換帳號",
+                        iconTint=SettingsSecondaryTeal,
+                        onClick={ onSwitchAccount(saved) }
+                    )
+                }
+            }
             item { SettingsSectionTitle("其他") }
             item {
                 SettingsCard {
@@ -107,7 +124,7 @@ internal fun SwitchAccountScreen(
             }
             item {
                 Text(
-                    "目前 App 不保存多組帳號密碼。登入其他帳號後，各帳號的個人化設定仍會分開保留。",
+                    "已登入帳號會以裝置加密儲存登入憑證；憑證到期後需重新登入。",
                     fontSize = 15.scaledSp(),
                     color = SettingsTextSub
                 )

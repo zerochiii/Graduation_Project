@@ -76,9 +76,9 @@ fun CommunityScreen(
     }
     val tabs = listOf("社區排行榜", "我的好友")
 
-    val leaderboardList = remember { mutableStateListOf<CommunityUser>() }
-    val friendList = remember { mutableStateListOf<CommunityUser>() }
-    val pendingRequests = remember { mutableStateListOf<FriendRequest>() }
+    val leaderboardList = remember(accountId) { mutableStateListOf<CommunityUser>() }
+    val friendList = remember(accountId) { mutableStateListOf<CommunityUser>() }
+    val pendingRequests = remember(accountId) { mutableStateListOf<FriendRequest>() }
 
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -252,21 +252,9 @@ fun LeaderboardTab(
                 CommunityUserCard(
                     user = displayedUser,
                     isMe = displayedUser.id == currentUser.id,
-                    avatarId = avatarIdForCommunityUser(
-                        currentAccountId = currentUser.id,
-                        displayedUserId = displayedUser.id,
-                        currentUserAvatarId = currentUserAvatarId
-                    ),
-                    avatarColorId = avatarColorIdForCommunityUser(
-                        currentAccountId = currentUser.id,
-                        displayedUserId = displayedUser.id,
-                        currentUserAvatarColorId = currentUserAvatarColorId
-                    ),
-                    avatarSource = avatarSourceForCommunityUser(
-                        currentAccountId = currentUser.id,
-                        displayedUserId = displayedUser.id,
-                        currentUserAvatarSource = currentUserAvatarSource
-                    ),
+                    avatarId = displayedUser.avatarId,
+                    avatarColorId = displayedUser.avatarColorId,
+                    avatarSource = communityAvatarSource(displayedUser),
                     actionsEnabled = actionsEnabled,
                     onAddFriend = { onAction("send", displayedUser.id.toInt(), null) },
                     onDeleteFriend = { onAction("delete", displayedUser.id.toInt(), null) }
@@ -335,6 +323,9 @@ fun FriendsTab(
                 CommunityUserCard(
                     user = friend,
                     isMe = false,
+                    avatarId=friend.avatarId,
+                    avatarColorId=friend.avatarColorId,
+                    avatarSource=communityAvatarSource(friend),
                     actionsEnabled = actionsEnabled,
                     onAddFriend = {},
                     onDeleteFriend = {
@@ -391,20 +382,11 @@ fun FriendRequestCard(
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .clip(CircleShape)
-                    .background(request.senderAvatarColor),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Person,
-                    contentDescription = null,
-                    modifier = Modifier.size(36.dp),
-                    tint = Color.White
-                )
-            }
+            ProfileAvatar(
+                avatarSource=if (request.avatarKind=="image") AvatarSource.RemoteImage(ApiClient.retrofit.baseUrl().toString()+"api/profile_image.php?id=${request.senderId}&v=${request.avatarVersion}") else AvatarSource.Preset(request.avatarId),
+                avatarColorId=request.avatarColorId,
+                size=56.dp
+            )
 
             Spacer(modifier = Modifier.width(12.dp))
 
@@ -1055,6 +1037,12 @@ private fun BoxScope.FriendCardCloudDecoration() {
             size = Size(size.width * 0.32f, size.height * 0.48f)
         )
     }
+}
+
+internal fun communityAvatarSource(user:CommunityUser):AvatarSource {
+    return if (user.avatarKind=="image") {
+        AvatarSource.RemoteImage(ApiClient.retrofit.baseUrl().toString()+"api/profile_image.php?id=${user.id}&v=${user.avatarVersion}")
+    } else AvatarSource.Preset(user.avatarId)
 }
 
 internal fun avatarIdForCommunityUser(
