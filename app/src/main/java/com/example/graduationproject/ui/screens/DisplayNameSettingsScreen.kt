@@ -44,7 +44,7 @@ internal fun DisplayNameSettingsScreen(
     avatarSource: AvatarSource = AvatarSource.Preset(avatarId),
     currentDisplayName: String,
     errorMessage: String?,
-    onSave: (String) -> Boolean,
+    onSave: suspend (String) -> Boolean,
     onClearError: () -> Unit,
     onNavigateBack: () -> Unit
 ) {
@@ -84,8 +84,8 @@ internal fun DisplayNameSettingsScreen(
         bottomBar = {
             ScaleButton(
                 onClick = {
-                    if (onSave(input)) {
-                        coroutineScope.launch { snackbarHostState.showSnackbar("顯示名稱已更新") }
+                    coroutineScope.launch {
+                        if (onSave(input)) snackbarHostState.showSnackbar("顯示名稱已更新")
                     }
                 },
                 text = "儲存顯示名稱",
@@ -102,52 +102,52 @@ internal fun DisplayNameSettingsScreen(
             verticalArrangement = Arrangement.spacedBy(SettingsSectionSpacing),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-                item {
-                    ProfileAvatar(
-                        avatarSource = avatarSource,
-                        avatarColorId = avatarColorId,
-                        size = 96.dp,
-                        contentDescription = "目前社群頭像"
+            item {
+                ProfileAvatar(
+                    avatarSource = avatarSource,
+                    avatarColorId = avatarColorId,
+                    size = 96.dp,
+                    contentDescription = "目前社群頭像"
+                )
+            }
+            item {
+                Column(Modifier.fillMaxWidth()) {
+                    Text(
+                        "目前顯示名稱",
+                        fontSize = 19.scaledSp(),
+                        fontWeight = FontWeight.Bold,
+                        color = SettingsTextMain
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = input,
+                        onValueChange = { if (it.length <= MAX_DISPLAY_NAME_LENGTH) input = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        supportingText = {
+                            Text(
+                                "${input.length}/$MAX_DISPLAY_NAME_LENGTH",
+                                color = SettingsTextSub
+                            )
+                        },
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = SettingsPrimaryPeach,
+                            cursorColor = SettingsPrimaryPeach
+                        )
                     )
                 }
-                item {
-                    Column(Modifier.fillMaxWidth()) {
-                        Text(
-                            "目前顯示名稱",
-                            fontSize = 19.scaledSp(),
-                            fontWeight = FontWeight.Bold,
-                            color = SettingsTextMain
-                        )
-                        Spacer(Modifier.height(10.dp))
-                        OutlinedTextField(
-                            value = input,
-                            onValueChange = { if (it.length <= MAX_DISPLAY_NAME_LENGTH) input = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            supportingText = {
-                                Text(
-                                    "${input.length}/$MAX_DISPLAY_NAME_LENGTH",
-                                    color = SettingsTextSub
-                                )
-                            },
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = SettingsPrimaryPeach,
-                                cursorColor = SettingsPrimaryPeach
-                            )
-                        )
-                    }
+            }
+            item {
+                SettingsCard {
+                    Text(
+                        "這是你在社群中顯示的名稱，讓其他成員更容易認識你。",
+                        modifier = Modifier.padding(18.dp),
+                        fontSize = 16.scaledSp(),
+                        color = SettingsTextSub
+                    )
                 }
-                item {
-                    SettingsCard {
-                        Text(
-                            "這是你在社群中顯示的名稱，讓其他成員更容易認識你。",
-                            modifier = Modifier.padding(18.dp),
-                            fontSize = 16.scaledSp(),
-                            color = SettingsTextSub
-                        )
-                    }
-                }
+            }
         }
     }
 }

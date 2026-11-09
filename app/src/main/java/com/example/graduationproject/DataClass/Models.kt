@@ -16,7 +16,11 @@ data class CommunityUser(
     val weeklyExp: Int,
     val rank: Int,
     val isFriend: Boolean = false,
-    val hasPendingRequestSent: Boolean = false
+    val hasPendingRequestSent: Boolean = false,
+    val avatarKind:String = "preset",
+    val avatarId:String = "avatar_default",
+    val avatarColorId:String = "avatar_color_peach",
+    val avatarVersion:Int = 0
 )
 
 data class FriendRequest(
@@ -24,7 +28,12 @@ data class FriendRequest(
     val senderName: String,
     val senderLevel: String,
     val senderAvatarColor: Color,
-    val requestTime: String
+    val requestTime: String,
+    val senderId:Int=0,
+    val avatarKind:String = "preset",
+    val avatarId:String = "avatar_default",
+    val avatarColorId:String = "avatar_color_peach",
+    val avatarVersion:Int = 0
 )
 
 data class LoginRequest(
@@ -295,3 +304,22 @@ data class GetExerciseRecordsResponse(
     val message: String? = null,
     val records: List<SavedExerciseRecord> = emptyList()
 )
+
+
+data class ProfileUpdateRequest(
+    val action:String,
+    val name:String?=null,
+    val kind:String?=null,
+    @SerializedName("avatar_id") val avatarId:String?=null,
+    @SerializedName("avatar_color") val avatarColor:String?=null,
+    @SerializedName("image_base64") val imageBase64:String?=null
+)
+data class RemoteProfile(
+    val name:String,
+    @SerializedName("avatar_kind") val avatarKind:String,
+    @SerializedName("avatar_id") val avatarId:String,
+    @SerializedName("avatar_color") val avatarColor:String,
+    @SerializedName("avatar_version") val avatarVersion:Int
+)
+data class RemoteProfileResponse(val success:Boolean,val profile:RemoteProfile?)
+data class SessionCheckResponse(val success:Boolean,val account_id:Int?,val name:String?)

@@ -59,10 +59,8 @@ fun ChatScreen(
 ) {
     val context = LocalContext.current
     val token = remember(accountId) {
-        context.getSharedPreferences(
-            "ElderCarePrefs",
-            Context.MODE_PRIVATE
-        ).getString("CHAT_TOKEN", "").orEmpty()
+        com.example.graduationproject.profile.RememberedAccounts(context).all()
+            .firstOrNull { it.id==accountId }?.token.orEmpty()
     }
     val friendId = friend.id.toIntOrNull() ?: return
     val chat: ChatViewModel = viewModel(key = "chat_${accountId}_$friendId")

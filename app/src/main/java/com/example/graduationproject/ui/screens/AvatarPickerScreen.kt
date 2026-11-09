@@ -82,7 +82,7 @@ internal fun AvatarPickerScreen(
     currentAvatarColorId: String,
     avatarFiles: ProfileAvatarFileManager,
     errorMessage: String?,
-    onSave: (AvatarSource, String) -> Boolean,
+    onSave: suspend (AvatarSource, String) -> Boolean,
     onClearError: () -> Unit,
     onNavigateBack: () -> Unit
 ) {
@@ -109,7 +109,7 @@ internal fun AvatarPickerScreen(
             runCatching { LocalImageSource.valueOf(sourceName) }.getOrNull()
                 ?.let { AvatarSource.LocalImage(path, it) }
         }
-    } ?: AvatarSource.Preset(pendingPresetId ?: AvatarCatalog.default.id)
+    } ?: if (pendingPresetId==null && currentAvatarSource is AvatarSource.RemoteImage) currentAvatarSource else AvatarSource.Preset(pendingPresetId ?: AvatarCatalog.default.id)
 
     fun replacePendingSource(source: AvatarSource) {
         val previous = pendingAvatarSource
@@ -121,6 +121,11 @@ internal fun AvatarPickerScreen(
                 pendingPresetId = source.avatarId
                 pendingLocalPath = null
                 pendingLocalSource = null
+            }
+            is AvatarSource.RemoteImage -> {
+                pendingPresetId=null
+                pendingLocalPath=null
+                pendingLocalSource=null
             }
             is AvatarSource.LocalImage -> {
                 pendingPresetId = null
@@ -209,10 +214,8 @@ internal fun AvatarPickerScreen(
         bottomBar = {
             ScaleButton(
                 onClick = {
-                    if (onSave(pendingAvatarSource, pendingAvatarColorId)) {
-                        coroutineScope.launch {
-                            snackbarHostState.showSnackbar("社群頭像已更新")
-                        }
+                    coroutineScope.launch {
+                        if (onSave(pendingAvatarSource,pendingAvatarColorId)) snackbarHostState.showSnackbar("社群頭像已更新")
                     }
                 },
                 text = "儲存頭像",
@@ -252,6 +255,7 @@ internal fun AvatarPickerScreen(
                             is AvatarSource.Preset ->
                                 "目前預覽：${AvatarCatalog.find(pendingAvatarSource.avatarId).displayName}"
                             is AvatarSource.LocalImage -> "目前預覽：自訂照片"
+                            is AvatarSource.RemoteImage -> "目前預覽：自訂照片"
                         },
                         onImageLoadError = { showMessage("照片載入失敗") }
                     )
@@ -409,7 +413,7 @@ internal fun AvatarPickerScreen(
 
             items(AvatarCatalog.optionsFor(selectedCategory), key = { it.id }) { avatar ->
                 val isSelected = pendingAvatarSource is AvatarSource.Preset &&
-                    pendingAvatarSource.avatarId == avatar.id
+                        pendingAvatarSource.avatarId == avatar.id
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -474,6 +478,7 @@ internal fun AvatarPickerScreen(
 private fun AvatarSource.storageKey(): String = when (this) {
     is AvatarSource.Preset -> "PRESET:$avatarId"
     is AvatarSource.LocalImage -> "LOCAL:${sourceType.name}:$path"
+    is AvatarSource.RemoteImage -> "REMOTE:$url"
 }
 
 private tailrec fun Context.findActivity(): Activity? = when (this) {

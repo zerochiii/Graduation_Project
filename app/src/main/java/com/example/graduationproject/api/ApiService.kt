@@ -1,4 +1,3 @@
-
 package com.example.graduationproject.api
 
 import com.example.graduationproject.DataClass.BindFamilyRequest
@@ -41,6 +40,13 @@ import com.example.graduationproject.DataClass.ChatSendResponse
 import retrofit2.http.Header
 
 interface ApiService {
+    @GET("api/get_profile.php")
+    suspend fun getProfile(@Header("Authorization") token:String):Response<com.example.graduationproject.DataClass.RemoteProfileResponse>
+    @POST("api/update_profile.php")
+    suspend fun updateProfile(@Header("Authorization") token:String,@Body request:com.example.graduationproject.DataClass.ProfileUpdateRequest):Response<com.example.graduationproject.DataClass.RemoteProfileResponse>
+    @GET("api/session_check.php")
+    suspend fun checkSession(@Header("Authorization") token:String):Response<com.example.graduationproject.DataClass.SessionCheckResponse>
+
     @POST("api/login.php")
     suspend fun login(@Body request: LoginRequest): Response<LoginResponse>
 

@@ -60,6 +60,7 @@ internal fun ProfileAvatar(
                 this.contentDescription = contentDescription ?: when (avatarSource) {
                     is AvatarSource.Preset -> "${avatar.displayName}頭像"
                     is AvatarSource.LocalImage -> "自訂照片頭像"
+                    is AvatarSource.RemoteImage -> "自訂照片頭像"
                 }
             },
         shape = CircleShape,
@@ -67,6 +68,17 @@ internal fun ProfileAvatar(
     ) {
         when (avatarSource) {
             is AvatarSource.Preset -> PresetAvatarIcon(avatarId = avatarSource.avatarId, size = size)
+            is AvatarSource.RemoteImage -> {
+                SubcomposeAsyncImage(
+                    model=avatarSource.url,
+                    contentDescription=null,
+                    contentScale=ContentScale.Crop,
+                    modifier=Modifier.fillMaxSize().padding(size*0.05f).clip(CircleShape),
+                    loading={ PresetAvatarIcon(avatarId=null,size=size) },
+                    error={ PresetAvatarIcon(avatarId=null,size=size) },
+                    success={ SubcomposeAsyncImageContent() }
+                )
+            }
             is AvatarSource.LocalImage -> {
                 SubcomposeAsyncImage(
                     model = File(avatarSource.path),

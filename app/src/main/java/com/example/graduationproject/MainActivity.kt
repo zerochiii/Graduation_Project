@@ -27,6 +27,9 @@ import com.example.graduationproject.assessment.AssessmentCompletionNoticeViewMo
 import com.example.graduationproject.assessment.SharedPreferencesAssessmentCompletionNoticeStore
 import com.example.graduationproject.assessment.shouldMarkAssessmentCompletionNoticePending
 import com.example.graduationproject.profile.AppPrivateProfileAvatarFileManager
+import com.example.graduationproject.profile.RememberedAccounts
+import com.example.graduationproject.profile.RememberedAccount
+import com.example.graduationproject.profile.ProfileRemoteSync
 import com.example.graduationproject.profile.ProfileCustomizationViewModel
 import com.example.graduationproject.profile.ProfileCustomizationViewModelFactory
 import com.example.graduationproject.profile.SharedPreferencesProfileSettingsStore
@@ -73,6 +76,7 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
     val settingsBackNavigationCoordinator = remember { SettingsBackNavigationCoordinator() }
     val context = LocalContext.current
+    val coroutineScope=rememberCoroutineScope()
 
     DisposableEffect(currentBackStackEntry) {
         val entry = currentBackStackEntry
@@ -115,6 +119,8 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
         context.getSharedPreferences("ElderCarePrefs", Context.MODE_PRIVATE)
     }
 
+    val rememberedAccounts=remember(context) { RememberedAccounts(context) }
+    var savedAccounts by remember { mutableStateOf(rememberedAccounts.all()) }
     val savedAccountId = sharedPreferences.getInt("ACCOUNT_ID", -1)
     var globalAccountId by remember { mutableIntStateOf(savedAccountId) }
     val assignmentViewModel: AssignmentViewModel = viewModel()
@@ -152,7 +158,7 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
         assignmentViewModel.resetForAccountChange()
         assessmentNoticeViewModel.reset()
         profileCustomizationViewModel.reset()
-        sharedPreferences.edit().remove("ACCOUNT_ID").apply()
+        sharedPreferences.edit().remove("ACCOUNT_ID").remove("CHAT_TOKEN").apply()
         globalAccountId = -1
         navController.navigate("login") {
             popUpTo("home") { inclusive = true }
@@ -160,6 +166,31 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
     }
 
     LaunchedEffect(globalAccountId) {
+        val id=globalAccountId
+        val token=rememberedAccounts.all().firstOrNull { it.id==id }?.token.orEmpty()
+        if (id>0 && token.isBlank()) {
+            logoutToLogin()
+            return@LaunchedEffect
+        }
+        if (id>0 && token.isNotBlank()) {
+            val session=runCatching { ApiClient.apiService.checkSession("Bearer $token") }.getOrNull()
+            if (session?.code()==401 || (session?.isSuccessful==true && session.body()?.account_id!=id)) {
+                rememberedAccounts.remove(id)
+                savedAccounts=rememberedAccounts.all()
+                logoutToLogin()
+                return@LaunchedEffect
+            }
+            runCatching { ApiClient.apiService.getProfile("Bearer $token") }.getOrNull()?.let { response ->
+                if (response.isSuccessful && response.body()?.success==true && globalAccountId==id) {
+                    response.body()?.profile?.let { profile ->
+                        profileCustomizationViewModel.bindAccount(id)
+                        profileCustomizationViewModel.applyRemoteProfile(id,profile)
+                        rememberedAccounts.rename(id,profile.name)
+                        savedAccounts=rememberedAccounts.all()
+                    }
+                }
+            }
+        }
         if (userViewModel.bindAccount(globalAccountId)) {
             assignmentViewModel.resetForAccountChange()
         }
@@ -178,7 +209,7 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
                 attemptId = attemptId,
                 exerciseId = exerciseId,
                 completed = result.resultCode == Activity.RESULT_OK &&
-                    data.getBooleanExtra(CameraActivity.EXTRA_TRAINING_COMPLETED, false)
+                        data.getBooleanExtra(CameraActivity.EXTRA_TRAINING_COMPLETED, false)
             )
         } else {
             assignmentViewModel.cancelActiveTraining()
@@ -197,6 +228,7 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
                 onNavigateToForgotPassword = { navController.navigate("forgot_password") },
                 onLoginSuccess = { role, accountId ->
                     globalAccountId = accountId
+                    savedAccounts=rememberedAccounts.all()
                     sharedPreferences.edit().putInt("ACCOUNT_ID", accountId).apply()
                     navController.navigate("home") {
                         popUpTo("login") { inclusive = true }
@@ -254,7 +286,7 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
                 currentUserDisplayName = profileCustomizationState.displayName,
                 showAssessmentCompletionNotice =
                     assessmentNoticeState.accountId == globalAccountId &&
-                        assessmentNoticeState.pending,
+                            assessmentNoticeState.pending,
                 onAcknowledgeAssessmentCompletionNotice = {
                     assessmentNoticeViewModel.acknowledge(globalAccountId)
                 },
@@ -347,7 +379,21 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
                 avatarFiles = avatarFiles,
                 errorMessage = profileCustomizationState.errorMessage,
                 onSave = { avatarSource, colorId ->
-                    profileCustomizationViewModel.saveAvatar(globalAccountId, avatarSource, colorId)
+                    val token=rememberedAccounts.all().firstOrNull { it.id==globalAccountId }?.token.orEmpty()
+                    if (token.isBlank() || !ProfileRemoteSync.updateAvatar(token,avatarSource,colorId)) {
+                        Toast.makeText(context,"伺服器頭像同步失敗，請確認網路",Toast.LENGTH_SHORT).show()
+                        false
+                    } else {
+                        val response=runCatching { ApiClient.apiService.getProfile("Bearer $token") }.getOrNull()
+                        val profile=response?.body()?.profile
+                        if (response?.isSuccessful==true && profile!=null) {
+                            profileCustomizationViewModel.applyRemoteProfile(globalAccountId,profile)
+                            true
+                        } else {
+                            Toast.makeText(context,"頭像已上傳，請重新開啟頁面同步",Toast.LENGTH_SHORT).show()
+                            false
+                        }
+                    }
                 },
                 onClearError = profileCustomizationViewModel::clearError,
                 onNavigateBack = navigateBackFromSettings
@@ -364,7 +410,23 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
                     dashboardName.orEmpty()
                 },
                 errorMessage = profileCustomizationState.errorMessage,
-                onSave = { name -> profileCustomizationViewModel.saveDisplayName(globalAccountId, name) },
+                onSave = { name ->
+                    val token=rememberedAccounts.all().firstOrNull { it.id==globalAccountId }?.token.orEmpty()
+                    val validation=com.example.graduationproject.profile.validateDisplayName(name)
+                    if (validation !is com.example.graduationproject.profile.DisplayNameValidation.Valid) {
+                        profileCustomizationViewModel.saveDisplayName(globalAccountId,name)
+                    } else if (token.isBlank() || !ProfileRemoteSync.updateName(token,validation.normalized)) {
+                        Toast.makeText(context,"伺服器姓名同步失敗，請確認網路",Toast.LENGTH_SHORT).show()
+                        false
+                    } else {
+                        val saved=profileCustomizationViewModel.saveDisplayName(globalAccountId,validation.normalized)
+                        if (saved) {
+                            rememberedAccounts.rename(globalAccountId,validation.normalized)
+                            savedAccounts=rememberedAccounts.all()
+                        }
+                        saved
+                    }
+                },
                 onClearError = profileCustomizationViewModel::clearError,
                 onNavigateBack = navigateBackFromSettings
             )
@@ -399,6 +461,28 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
                 avatarColorId = profileCustomizationState.avatarColorId,
                 avatarSource = profileCustomizationState.avatarSource,
                 onLoginAnotherAccount = logoutToLogin,
+                rememberedAccounts=savedAccounts,
+                currentAccountId=globalAccountId,
+                onSwitchAccount={ selected ->
+                    coroutineScope.launch {
+                        val response=runCatching { ApiClient.apiService.checkSession("Bearer ${selected.token}") }.getOrNull()
+                        if (response?.isSuccessful==true && response.body()?.success==true && response.body()?.account_id==selected.id) {
+                            userViewModel.reset()
+                            assignmentViewModel.resetForAccountChange()
+                            assessmentNoticeViewModel.reset()
+                            profileCustomizationViewModel.reset()
+                            sharedPreferences.edit().putInt("ACCOUNT_ID",selected.id).apply()
+                            globalAccountId=selected.id
+                            navController.navigate("home") { popUpTo(navController.graph.id) { inclusive=false }; launchSingleTop=true }
+                        } else {
+                            if (response?.code()==401) {
+                                rememberedAccounts.remove(selected.id)
+                                savedAccounts=rememberedAccounts.all()
+                            }
+                            Toast.makeText(context,"無法切換，請重新登入該帳號",Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                },
                 onNavigateBack = navigateBackFromSettings
             )
         }
