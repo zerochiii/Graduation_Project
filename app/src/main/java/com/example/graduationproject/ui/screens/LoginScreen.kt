@@ -209,7 +209,12 @@ fun LoginScreen(
                                     if (realAccountId>0 && !body.data?.chatToken.isNullOrBlank()) {
                                         runCatching {
                                             com.example.graduationproject.profile.RememberedAccounts(context).save(
-                                                com.example.graduationproject.profile.RememberedAccount(realAccountId,body.data?.name.orEmpty(),body.data!!.chatToken!!)
+                                                com.example.graduationproject.profile.RememberedAccount(
+                                                    id = realAccountId,
+                                                    name = body.data?.name.orEmpty(),
+                                                    token = body.data!!.chatToken!!,
+                                                    role = safeRole
+                                                )
                                             )
                                         }
                                     }

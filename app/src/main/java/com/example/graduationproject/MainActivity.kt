@@ -1,6 +1,8 @@
 package com.example.graduationproject
 
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -26,6 +28,16 @@ import com.example.graduationproject.assessment.AssessmentCompletionNoticeViewMo
 import com.example.graduationproject.assessment.AssessmentCompletionNoticeViewModelFactory
 import com.example.graduationproject.assessment.SharedPreferencesAssessmentCompletionNoticeStore
 import com.example.graduationproject.assessment.shouldMarkAssessmentCompletionNoticePending
+import com.example.graduationproject.family.ApiFamilyRepository
+import com.example.graduationproject.family.BackendBlockedFamilyBindingRepository
+import com.example.graduationproject.family.BindElderScreen
+import com.example.graduationproject.family.ElderBindingCodeUiState
+import com.example.graduationproject.family.ElderFamilyBindingScreen
+import com.example.graduationproject.family.FamilyBindingViewModel
+import com.example.graduationproject.family.FamilyBindingViewModelFactory
+import com.example.graduationproject.family.FamilyHomeScreen
+import com.example.graduationproject.family.FamilyHomeViewModel
+import com.example.graduationproject.family.FamilyHomeViewModelFactory
 import com.example.graduationproject.profile.AppPrivateProfileAvatarFileManager
 import com.example.graduationproject.profile.RememberedAccounts
 import com.example.graduationproject.profile.RememberedAccount
@@ -123,6 +135,14 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
     var savedAccounts by remember { mutableStateOf(rememberedAccounts.all()) }
     val savedAccountId = sharedPreferences.getInt("ACCOUNT_ID", -1)
     var globalAccountId by remember { mutableIntStateOf(savedAccountId) }
+    var globalAccountRole by remember {
+        mutableStateOf(
+            savedAccounts.firstOrNull { it.id == savedAccountId }
+                ?.role
+                ?.takeIf { it == "family" }
+                ?: "elder"
+        )
+    }
     val assignmentViewModel: AssignmentViewModel = viewModel()
     val assessmentNoticeViewModelFactory: ViewModelProvider.Factory = remember(sharedPreferences) {
         AssessmentCompletionNoticeViewModelFactory(
@@ -152,6 +172,7 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
     var dashboardPoints by remember(globalAccountId) { mutableStateOf<Int?>(null) }
     var dashboardLoaded by remember(globalAccountId) { mutableStateOf(false) }
     var dashboardLoadFailed by remember(globalAccountId) { mutableStateOf(false) }
+    var familyRefreshRequest by remember { mutableIntStateOf(0) }
 
     val logoutToLogin: () -> Unit = {
         userViewModel.reset()
@@ -160,12 +181,13 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
         profileCustomizationViewModel.reset()
         sharedPreferences.edit().remove("ACCOUNT_ID").remove("CHAT_TOKEN").apply()
         globalAccountId = -1
+        globalAccountRole = "elder"
         navController.navigate("login") {
             popUpTo("home") { inclusive = true }
         }
     }
 
-    LaunchedEffect(globalAccountId) {
+    LaunchedEffect(globalAccountId, globalAccountRole) {
         val id=globalAccountId
         val token=rememberedAccounts.all().firstOrNull { it.id==id }?.token.orEmpty()
         if (id>0 && token.isBlank()) {
@@ -180,13 +202,15 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
                 logoutToLogin()
                 return@LaunchedEffect
             }
-            runCatching { ApiClient.apiService.getProfile("Bearer $token") }.getOrNull()?.let { response ->
-                if (response.isSuccessful && response.body()?.success==true && globalAccountId==id) {
-                    response.body()?.profile?.let { profile ->
-                        profileCustomizationViewModel.bindAccount(id)
-                        profileCustomizationViewModel.applyRemoteProfile(id,profile)
-                        rememberedAccounts.rename(id,profile.name)
-                        savedAccounts=rememberedAccounts.all()
+            if (globalAccountRole == "elder") {
+                runCatching { ApiClient.apiService.getProfile("Bearer $token") }.getOrNull()?.let { response ->
+                    if (response.isSuccessful && response.body()?.success==true && globalAccountId==id) {
+                        response.body()?.profile?.let { profile ->
+                            profileCustomizationViewModel.bindAccount(id)
+                            profileCustomizationViewModel.applyRemoteProfile(id,profile)
+                            rememberedAccounts.rename(id,profile.name)
+                            savedAccounts=rememberedAccounts.all()
+                        }
                     }
                 }
             }
@@ -227,6 +251,7 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
                 onNavigateToRegister = { navController.navigate("register") },
                 onNavigateToForgotPassword = { navController.navigate("forgot_password") },
                 onLoginSuccess = { role, accountId ->
+                    globalAccountRole = if (role == "family") "family" else "elder"
                     globalAccountId = accountId
                     savedAccounts=rememberedAccounts.all()
                     sharedPreferences.edit().putInt("ACCOUNT_ID", accountId).apply()
@@ -249,6 +274,33 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
         }
 
         composable("home") {
+            if (globalAccountRole == "family") {
+                val familyViewModelFactory = remember {
+                    FamilyHomeViewModelFactory(
+                        ApiFamilyRepository(ApiClient.apiService)
+                    )
+                }
+                val familyViewModel: FamilyHomeViewModel = viewModel(
+                    key = "family-home-$globalAccountId",
+                    factory = familyViewModelFactory
+                )
+                FamilyHomeScreen(
+                    accountId = globalAccountId,
+                    displayName = savedAccounts.firstOrNull { it.id == globalAccountId }
+                        ?.name
+                        .orEmpty(),
+                    viewModel = familyViewModel,
+                    refreshRequest = familyRefreshRequest,
+                    onBindElder = {
+                        navController.navigate("bind_elder") { launchSingleTop = true }
+                    },
+                    onOpenSettings = {
+                        navController.navigate("settings") { launchSingleTop = true }
+                    }
+                )
+                return@composable
+            }
+
             ElderlyDashboard(
                 accountId = globalAccountId,
                 userViewModel = userViewModel,
@@ -354,20 +406,51 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
         composable("settings") {
             SettingsScreen(
                 accountId = globalAccountId,
+                accountRole = globalAccountRole,
                 avatarId = profileCustomizationState.avatarId,
                 avatarColorId = profileCustomizationState.avatarColorId,
                 avatarSource = profileCustomizationState.avatarSource,
-                displayName = profileCustomizationState.displayName.ifBlank {
-                    dashboardName.orEmpty()
+                displayName = if (globalAccountRole == "family") {
+                    savedAccounts.firstOrNull { it.id == globalAccountId }?.name.orEmpty()
+                } else {
+                    profileCustomizationState.displayName.ifBlank { dashboardName.orEmpty() }
                 },
                 onNavigateToAvatarPicker = { navController.navigate("avatar_picker") },
                 onNavigateToDisplayName = { navController.navigate("display_name_settings") },
                 onNavigateToCommunityVisibility = { navController.navigate("community_visibility_settings") },
                 onNavigateToProfileSummary = { navController.navigate("profile_summary") },
+                onNavigateToFamilyBinding = { navController.navigate("elder_family_binding") },
                 onNavigateToSwitchAccount = { navController.navigate("switch_account") },
                 onNavigateToAccountInfo = { navController.navigate("account_info") },
                 onNavigateToLogout = { navController.navigate("logout") },
                 onNavigateBack = navigateBackFromSettings,
+            )
+        }
+
+        composable("elder_family_binding") {
+            ElderFamilyBindingScreen(
+                state = ElderBindingCodeUiState.Unavailable,
+                onCopyCode = { code ->
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("FitCare 家屬綁定碼", code))
+                    Toast.makeText(context, "綁定碼已複製", Toast.LENGTH_SHORT).show()
+                },
+                onNavigateBack = navigateBackFromSettings
+            )
+        }
+
+        composable("bind_elder") {
+            val bindingViewModelFactory = remember {
+                FamilyBindingViewModelFactory(BackendBlockedFamilyBindingRepository())
+            }
+            val bindingViewModel: FamilyBindingViewModel = viewModel(factory = bindingViewModelFactory)
+            BindElderScreen(
+                viewModel = bindingViewModel,
+                onBindingSuccess = {
+                    familyRefreshRequest += 1
+                    navController.popBackStack()
+                },
+                onNavigateBack = { navController.popBackStack() }
             )
         }
 
@@ -472,6 +555,7 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
                             assessmentNoticeViewModel.reset()
                             profileCustomizationViewModel.reset()
                             sharedPreferences.edit().putInt("ACCOUNT_ID",selected.id).apply()
+                            globalAccountRole = if (selected.role == "family") "family" else "elder"
                             globalAccountId=selected.id
                             navController.navigate("home") { popUpTo(navController.graph.id) { inclusive=false }; launchSingleTop=true }
                         } else {
@@ -489,7 +573,12 @@ fun AppNavigation(userViewModel: UserViewModel = viewModel()) {
 
         composable("account_info") {
             AccountInfoScreen(
-                displayName = profileCustomizationState.displayName.ifBlank { dashboardName.orEmpty() },
+                displayName = if (globalAccountRole == "family") {
+                    savedAccounts.firstOrNull { it.id == globalAccountId }?.name.orEmpty()
+                } else {
+                    profileCustomizationState.displayName.ifBlank { dashboardName.orEmpty() }
+                },
+                accountRoleLabel = if (globalAccountRole == "family") "家屬帳號" else "長輩帳號",
                 appVersion = BuildConfig.VERSION_NAME,
                 onNavigateBack = navigateBackFromSettings
             )

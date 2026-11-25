@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.Badge
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.SwitchAccount
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -114,6 +115,7 @@ internal class SettingsBackNavigationCoordinator(
             "avatar_picker",
             "display_name_settings",
             "community_visibility_settings",
+            "elder_family_binding",
             "profile_summary",
             "switch_account",
             "account_info",
@@ -138,6 +140,7 @@ internal fun dispatchSettingsBackRequest(
 @Composable
 fun SettingsScreen(
     accountId: Int,
+    accountRole: String = "elder",
     avatarId: String,
     avatarColorId: String,
     avatarSource: AvatarSource = AvatarSource.Preset(avatarId),
@@ -146,12 +149,17 @@ fun SettingsScreen(
     onNavigateToDisplayName: () -> Unit,
     onNavigateToCommunityVisibility: () -> Unit,
     onNavigateToProfileSummary: () -> Unit,
+    onNavigateToFamilyBinding: () -> Unit,
     onNavigateToSwitchAccount: () -> Unit,
     onNavigateToAccountInfo: () -> Unit,
     onNavigateToLogout: () -> Unit,
     onNavigateBack: () -> Unit
 ) {
-    SettingsScaffold(title = "個人化設定中心", onNavigateBack = onNavigateBack) { innerPadding ->
+    val isFamilyAccount = accountRole == "family"
+    SettingsScaffold(
+        title = if (isFamilyAccount) "設定" else "個人化設定中心",
+        onNavigateBack = onNavigateBack
+    ) { innerPadding ->
         LazyColumn(
             modifier = Modifier.padding(innerPadding).fillMaxSize(),
             contentPadding = PaddingValues(horizontal = SettingsPagePadding, vertical = SettingsSectionSpacing),
@@ -159,14 +167,15 @@ fun SettingsScreen(
         ) {
             item {
                 Text(
-                    "打造屬於你的社群形象與使用體驗",
+                    if (isFamilyAccount) "管理家屬帳號與應用程式設定" else "打造屬於你的社群形象與使用體驗",
                     fontSize = 16.scaledSp(),
                     color = SettingsTextSub
                 )
             }
-            item { SettingsSectionTitle("個人資料") }
-            item {
-                SettingsCard {
+            if (!isFamilyAccount) {
+                item { SettingsSectionTitle("個人資料") }
+                item {
+                    SettingsCard {
                     SettingsNavigationRow(
                         icon = Icons.Rounded.AccountCircle,
                         title = "社群頭像",
@@ -195,10 +204,25 @@ fun SettingsScreen(
                         subtitle = "查看帳號與使用資訊",
                         onClick = onNavigateToProfileSummary
                     )
+                    }
                 }
-            }
 
-            item { SettingsSectionTitle("社群設定") }
+                item { SettingsSectionTitle("家屬照護") }
+                item {
+                    SettingsCard {
+                        SettingsNavigationRow(
+                            icon = Icons.Rounded.Link,
+                            title = "家屬綁定",
+                            subtitle = "讓家屬查看您分享的 FitCare 資訊",
+                            onClick = onNavigateToFamilyBinding
+                        )
+                    }
+                }
+
+                item { SettingsSectionTitle("社群設定") }
+            } else {
+                item { SettingsSectionTitle("應用程式設定") }
+            }
             item {
                 SettingsCard {
                     SettingsNavigationRow(
@@ -207,6 +231,20 @@ fun SettingsScreen(
                         subtitle = "管理在社群中的顯示內容",
                         onClick = onNavigateToCommunityVisibility
                     )
+                }
+            }
+
+            if (isFamilyAccount) {
+                item { SettingsSectionTitle("關於") }
+                item {
+                    SettingsCard {
+                        SettingsNavigationRow(
+                            icon = Icons.Rounded.Info,
+                            title = "關於 FitCare",
+                            subtitle = "查看應用程式版本與基本資訊",
+                            onClick = onNavigateToAccountInfo
+                        )
+                    }
                 }
             }
 
@@ -223,7 +261,7 @@ fun SettingsScreen(
                     SettingsNavigationRow(
                         icon = Icons.Rounded.AccountCircle,
                         title = "帳號資訊",
-                        subtitle = "查看基本識別資訊",
+                        subtitle = if (isFamilyAccount) "家屬帳號" else "查看基本識別資訊",
                         onClick = onNavigateToAccountInfo
                     )
                     SettingsDivider()
@@ -385,6 +423,7 @@ private fun SettingsScreenPreview() {
             onNavigateToDisplayName = {},
             onNavigateToCommunityVisibility = {},
             onNavigateToProfileSummary = {},
+            onNavigateToFamilyBinding = {},
             onNavigateToSwitchAccount = {},
             onNavigateToAccountInfo = {},
             onNavigateToLogout = {},

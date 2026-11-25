@@ -59,7 +59,8 @@ data class RegisterElderRequest(
     val username: String,
     val email: String,
     val phone: String,
-    val password: String
+    val password: String,
+    val role: String = "elder"
 )
 
 data class RedeemRequest(
@@ -196,6 +197,24 @@ data class BindFamilyRequest(
     val account_id: Int,
     val elder_id: Int,
     val name: String
+)
+
+data class FamilyElderRecord(
+    val nickname: String? = null,
+    @SerializedName("real_name")
+    val realName: String? = null,
+    @SerializedName("sppb_score")
+    val sppbScore: Int? = null,
+    @SerializedName("has_fall_risk")
+    val hasFallRisk: Int? = null,
+    @SerializedName("test_date")
+    val testDate: String? = null
+)
+
+data class FamilyEldersResponse(
+    val success: Boolean,
+    val data: List<FamilyElderRecord> = emptyList(),
+    val message: String? = null
 )
 
 data class CommonResponse(

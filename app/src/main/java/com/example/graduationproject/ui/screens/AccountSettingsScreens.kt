@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.AddCircle
+import androidx.compose.material.icons.rounded.Badge
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material3.Icon
@@ -136,6 +137,7 @@ internal fun SwitchAccountScreen(
 @Composable
 internal fun AccountInfoScreen(
     displayName: String,
+    accountRoleLabel: String? = null,
     appVersion: String,
     onNavigateBack: () -> Unit
 ) {
@@ -148,6 +150,10 @@ internal fun AccountInfoScreen(
             item {
                 SettingsCard {
                     AccountInfoRow(Icons.Rounded.AccountCircle, "顯示名稱", displayName.ifBlank { "尚未設定" })
+                    accountRoleLabel?.let {
+                        SettingsDivider()
+                        AccountInfoRow(Icons.Rounded.Badge, "帳號類型", it)
+                    }
                     SettingsDivider()
                     AccountInfoRow(Icons.Rounded.Info, "App 版本", appVersion)
                 }
