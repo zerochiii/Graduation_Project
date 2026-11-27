@@ -12,7 +12,12 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-internal data class RememberedAccount(val id:Int,val name:String,val token:String)
+internal data class RememberedAccount(
+    val id: Int,
+    val name: String,
+    val token: String,
+    val role: String = "elder"
+)
 internal class RememberedAccounts(context:Context) {
     private val prefs=context.getSharedPreferences("RememberedAccounts",Context.MODE_PRIVATE)
     private val alias="eldercare_saved_accounts_v1"
@@ -34,12 +39,25 @@ internal class RememberedAccounts(context:Context) {
         val array=JSONArray(String(cipher.doFinal(data.copyOfRange(12,data.size)),Charsets.UTF_8))
         (0 until array.length()).map { i ->
             val o=array.getJSONObject(i)
-            RememberedAccount(o.getInt("id"),o.getString("name"),o.getString("token"))
+            RememberedAccount(
+                id = o.getInt("id"),
+                name = o.getString("name"),
+                token = o.getString("token"),
+                role = o.optString("role", "elder")
+            )
         }
     }.getOrDefault(emptyList())
     private fun write(list:List<RememberedAccount>) {
         val array=JSONArray()
-        list.forEach { array.put(JSONObject().put("id",it.id).put("name",it.name).put("token",it.token)) }
+        list.forEach {
+            array.put(
+                JSONObject()
+                    .put("id", it.id)
+                    .put("name", it.name)
+                    .put("token", it.token)
+                    .put("role", it.role)
+            )
+        }
         val cipher=Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE,key())
         val encrypted=cipher.iv+cipher.doFinal(array.toString().toByteArray(Charsets.UTF_8))

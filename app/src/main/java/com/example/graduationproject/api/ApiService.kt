@@ -5,6 +5,7 @@ import com.example.graduationproject.DataClass.CommonResponse
 import com.example.graduationproject.DataClass.CommunityDataResponse
 import com.example.graduationproject.DataClass.ElderDashboardResponse
 import com.example.graduationproject.DataClass.FitnessRadarResponse
+import com.example.graduationproject.DataClass.FamilyEldersResponse
 import com.example.graduationproject.DataClass.FriendActionRequest
 import com.example.graduationproject.DataClass.GetExerciseRecordsRequest
 import com.example.graduationproject.DataClass.GetExerciseRecordsResponse
@@ -33,6 +34,7 @@ import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.Query
 import com.example.graduationproject.DataClass.ChatFetchRequest
 import com.example.graduationproject.DataClass.ChatMessagesResponse
 import com.example.graduationproject.DataClass.ChatSendRequest
@@ -73,6 +75,11 @@ interface ApiService {
 
     @POST("bind_family.php")
     suspend fun bindFamily(@Body request: BindFamilyRequest): Response<CommonResponse>
+
+    @GET("api/get_family_elders.php")
+    suspend fun getFamilyElders(
+        @Query("family_id") familyAccountId: Int
+    ): Response<FamilyEldersResponse>
 
     @POST("api/get_elder_dashboard.php")
     suspend fun getElderDashboardData(@Body request: GetPointsRequest): Response<ElderDashboardResponse>

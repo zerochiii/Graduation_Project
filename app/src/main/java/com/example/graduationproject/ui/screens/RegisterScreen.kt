@@ -2,23 +2,33 @@ package com.example.graduationproject.ui.screens
 
 import android.widget.Toast
 import androidx.compose.animation.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Elderly
 import androidx.compose.material.icons.rounded.Error
+import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -43,6 +53,113 @@ private val BeigeBg = Color(0xFFFDFCF9)
 private val PrimaryPeach = Color(0xFFFF8A65)
 private val SecondaryTeal = Color(0xFF4DB6AC)
 private val TextMain = Color(0xFF201A18)
+private val RegistrationPurple = Color(0xFF5B3F8C)
+private val RegistrationPurpleLight = Color(0xFFF1ECFA)
+
+enum class RegistrationRole(
+    val wireValue: String,
+    val title: String,
+    val description: String
+) {
+    ELDER(
+        wireValue = "elder",
+        title = "我是長者",
+        description = "使用 FitCare 進行體能評估與訓練"
+    ),
+    FAMILY(
+        wireValue = "family",
+        title = "我是家屬",
+        description = "查看已綁定長輩的健康與評估狀況"
+    )
+}
+
+internal fun defaultRegistrationRole(): RegistrationRole = RegistrationRole.ELDER
+
+internal fun currentBackendSupportsRegistration(role: RegistrationRole): Boolean =
+    role == RegistrationRole.ELDER
+
+internal const val FAMILY_REGISTRATION_UNAVAILABLE_MESSAGE =
+    "家屬帳號註冊功能目前尚未開放，請稍後再試。"
+
+@Composable
+internal fun RegistrationRoleSelector(
+    selectedRole: RegistrationRole,
+    onRoleSelected: (RegistrationRole) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier.fillMaxWidth().selectableGroup()) {
+        Text(
+            text = "帳號用途",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            color = TextMain
+        )
+        Spacer(Modifier.height(12.dp))
+        RegistrationRole.entries.forEachIndexed { index, role ->
+            val selected = role == selectedRole
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 86.dp)
+                    .selectable(
+                        selected = selected,
+                        role = Role.RadioButton,
+                        onClick = { onRoleSelected(role) }
+                    )
+                    .semantics {
+                        contentDescription = "${role.title}，${role.description}"
+                    },
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (selected) RegistrationPurpleLight else Color.White
+                ),
+                border = BorderStroke(
+                    width = if (selected) 2.dp else 1.dp,
+                    color = if (selected) RegistrationPurple else TextMain.copy(alpha = 0.14f)
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = if (selected) 1.dp else 0.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (selected) RegistrationPurple else RegistrationPurpleLight
+                    ) {
+                        Icon(
+                            imageVector = if (role == RegistrationRole.ELDER) Icons.Rounded.Elderly else Icons.Rounded.Groups,
+                            contentDescription = null,
+                            tint = if (selected) Color.White else RegistrationPurple,
+                            modifier = Modifier.padding(11.dp).size(28.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            role.title,
+                            fontSize = 19.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (selected) RegistrationPurple else TextMain
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            role.description,
+                            fontSize = 14.sp,
+                            color = if (selected) RegistrationPurple.copy(alpha = 0.82f) else TextMain.copy(alpha = 0.68f)
+                        )
+                    }
+                    RadioButton(
+                        selected = selected,
+                        onClick = null,
+                        colors = RadioButtonDefaults.colors(selectedColor = RegistrationPurple)
+                    )
+                }
+            }
+            if (index != RegistrationRole.entries.lastIndex) Spacer(Modifier.height(10.dp))
+        }
+    }
+}
 
 @Composable
 fun VerificationCodeInput(
@@ -106,6 +223,7 @@ fun RegisterScreen(
     onNavigateBackToLogin: () -> Unit = {},
     onRegisterSuccess: () -> Unit = {}
 ) {
+    var selectedRole by rememberSaveable { mutableStateOf(defaultRegistrationRole()) }
     var name by remember { mutableStateOf("") }
     var account by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
@@ -185,6 +303,8 @@ fun RegisterScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .navigationBarsPadding()
+                .imePadding()
                 .padding(24.dp)
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -193,7 +313,46 @@ fun RegisterScreen(
             Text(text = "建立新帳號", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = TextMain)
             Spacer(modifier = Modifier.height(8.dp))
             Text(text = "加入我們，開始智慧健康生活", fontSize = 16.sp, color = TextMain.copy(alpha = 0.6f))
-            Spacer(modifier = Modifier.height(40.dp))
+            Spacer(modifier = Modifier.height(28.dp))
+
+            RegistrationRoleSelector(
+                selectedRole = selectedRole,
+                onRoleSelected = {
+                    selectedRole = it
+                    errorMessage = null
+                }
+            )
+
+            AnimatedVisibility(visible = selectedRole == RegistrationRole.FAMILY) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 14.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    color = RegistrationPurpleLight
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Info,
+                            contentDescription = null,
+                            tint = RegistrationPurple,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            text = FAMILY_REGISTRATION_UNAVAILABLE_MESSAGE,
+                            color = TextMain,
+                            fontSize = 15.sp,
+                            lineHeight = 22.sp
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(28.dp))
 
             // 1. 姓名
             OutlinedTextField(
@@ -390,6 +549,8 @@ fun RegisterScreen(
                         errorMessage = "電話號碼格式錯誤"
                     } else if (password != confirmPassword) {
                         errorMessage = "兩次密碼輸入不一致"
+                    } else if (!currentBackendSupportsRegistration(selectedRole)) {
+                        errorMessage = FAMILY_REGISTRATION_UNAVAILABLE_MESSAGE
                     } else if (!registerGuard.tryStart()) {
                         return@ScaleButton
                     } else {
@@ -402,7 +563,8 @@ fun RegisterScreen(
                                     username = account,
                                     email = email,
                                     phone = phone,
-                                    password = password
+                                    password = password,
+                                    role = selectedRole.wireValue
                                 )
                                 val response = ApiClient.apiService.registerElder(request)
 
@@ -432,8 +594,13 @@ fun RegisterScreen(
                         }
                     }
                 },
-                text = if (isLoading) "註冊中..." else "註冊",
+                text = when {
+                    isLoading -> "註冊中..."
+                    selectedRole == RegistrationRole.FAMILY -> "家屬註冊尚未開放"
+                    else -> "註冊"
+                },
                 enabled = !isLoading &&
+                        currentBackendSupportsRegistration(selectedRole) &&
                         name.isNotEmpty() &&
                         account.isNotEmpty() &&
                         email.isNotEmpty() &&
@@ -467,5 +634,25 @@ fun RegisterScreen(
 fun RegisterScreenPreview() {
     GraduationProjectTheme {
         RegisterScreen()
+    }
+}
+
+@Preview(name = "Registration Role - Elder", showBackground = true)
+@Composable
+private fun RegistrationRoleElderPreview() {
+    GraduationProjectTheme {
+        Box(Modifier.background(BeigeBg).padding(20.dp)) {
+            RegistrationRoleSelector(RegistrationRole.ELDER, {})
+        }
+    }
+}
+
+@Preview(name = "Registration Role - Family", showBackground = true)
+@Composable
+private fun RegistrationRoleFamilyPreview() {
+    GraduationProjectTheme {
+        Box(Modifier.background(BeigeBg).padding(20.dp)) {
+            RegistrationRoleSelector(RegistrationRole.FAMILY, {})
+        }
     }
 }
